@@ -16,3 +16,5 @@ dbu32/intl/fbintl.conf
 dbu32/icudt63l.dat
 dbu64/firebird.msg
 dbu64/intl/fbintl.conf
+/lib/win/mingw/.hbmk
+/lib/win/mingw64

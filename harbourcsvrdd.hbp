@@ -24,4 +24,4 @@ xhb.hbc
 FCSVRDD.prg
 f_freadl.prg
 
-#$hb_pkg_install.hbm
+$hb_pkg_install.hbm
