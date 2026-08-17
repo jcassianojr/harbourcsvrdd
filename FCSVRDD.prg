@@ -2,9 +2,8 @@
  * FCSVRDD RDD - Completo, Otimizado e Seguro para Arquivos CSV Grandes
  */
 
-
 #include "rddsys.ch"
-#include "usrrdd.ch"
+#include "hbusrrdd.ch"
 #include "fileio.ch"
 #include "error.ch"
 #include "dbstruct.ch"
@@ -12,11 +11,13 @@
 
 ANNOUNCE FCSVRDD
 
-STATIC s_nReadSize    := 1024
-STATIC s_lUseSplit    := .F.
-STATIC s_cFieldDelim  := ";"
-STATIC s_lUseHeader   := .F.
-STATIC s_lUseRecCount := .F.
+STATIC s_nReadSize     := 1024
+STATIC s_lUseSplit     := .F.
+STATIC s_cFieldDelim   := ";"
+STATIC s_lUseHeader    := .F.
+STATIC s_lUseRecCount  := .F.
+STATIC s_lUseTypedCSV  := .F.
+STATIC s_aManualHeader := {}   // Armazena a matriz de cabeçalho/tipagem passada manualmente
 
 // +--------------------------------------------------------------------
 // + Funções de Configuração Global
@@ -51,6 +52,23 @@ FUNCTION FCSV_USARRECCOUNT( lUse )
       s_lUseRecCount := lUse
    ENDIF
    RETURN s_lUseRecCount
+
+FUNCTION FCSV_USARTIPAGEM( lUse )
+   IF ValType( lUse ) == "L"
+      s_lUseTypedCSV := lUse
+   ENDIF
+   RETURN s_lUseTypedCSV
+
+// Permite injetar o cabeçalho/estrutura manualmente via matriz (Array)
+FUNCTION FCSV_SETCABECALHO( aCabec )
+   IF ValType( aCabec ) == "A"
+      s_aManualHeader := aCabec
+      s_lUseHeader    := .T.
+      IF Len( aCabec ) > 0 .AND. At( ",", aCabec[1] ) > 0
+         s_lUseTypedCSV := .T.
+      ENDIF
+   ENDIF
+   RETURN s_aManualHeader
 
 // +--------------------------------------------------------------------
 // + Retorna a linha inteira crua da Work Area ativa sem alterar colunas
@@ -87,6 +105,19 @@ FUNCTION FCSV_GETROW()
    ENDIF
    
    RETURN aRow
+
+// +--------------------------------------------------------------------
+// + Retorna o Array Auxiliar com a estrutura original tipada do CSV
+// +--------------------------------------------------------------------
+FUNCTION FCSV_GETSTRUCTORIGINAL()
+   LOCAL aWData, aStruct := {}
+   
+   aWData := USRRDD_AREADATA( Select() )
+   IF ValType( aWData ) == "A" .AND. Len( aWData ) >= 8
+      aStruct := aWData[ 8 ]
+   ENDIF
+   
+   RETURN aStruct
 
 // +--------------------------------------------------------------------
 // + Split Robusto (Trata mistas com/sem aspas, aspas internas e casos atípicos)
@@ -144,6 +175,44 @@ FUNCTION SplitAspasRDD( cLINHA, cSEPCAMPOS )
    RETURN aRETU
 
 // +--------------------------------------------------------------------
+// + Parser Inteligente para Tipagem do CSV
+// +--------------------------------------------------------------------
+STATIC FUNCTION ParseFieldDefinition( cDef )
+   LOCAL aParts, cName := "", cType := "C", nLen := 0, nDec := 0, cSec
+   
+   cDef := AllTrim( StrTran( cDef, '"', '' ) )
+   aParts := hb_ATokens( cDef, "," )
+   
+   IF Len( aParts ) > 0
+      cName := AllTrim( aParts[ 1 ] )
+   ENDIF
+   
+   IF Len( aParts ) > 1
+      cSec := Upper( AllTrim( aParts[ 2 ] ) )
+      IF cSec $ "N,C,D,L,M"
+         cType := cSec
+         IF Len( aParts ) > 2
+            nLen := Val( aParts[ 3 ] )
+         ENDIF
+         IF Len( aParts ) > 3
+            nDec := Val( aParts[ 4 ] )
+         ENDIF
+      ELSE
+         cType := "N"
+         nLen  := Val( cSec )
+         IF Len( aParts ) > 2
+            nDec := Val( aParts[ 3 ] )
+         ENDIF
+      ENDIF
+   ENDIF
+   
+   IF cType == "D" .AND. nLen == 0; nLen := 8; ENDIF
+   IF cType == "L" .AND. nLen == 0; nLen := 1; ENDIF
+   IF cType == "M" .AND. nLen == 0; nLen := 4; ENDIF
+   
+   RETURN { cName, cType, nLen, nDec }
+
+// +--------------------------------------------------------------------
 // + Metodos Internos do RDD
 // +--------------------------------------------------------------------
 
@@ -152,7 +221,7 @@ STATIC FUNCTION FCSV_INIT( nRDD )
    RETURN HB_SUCCESS
 
 STATIC FUNCTION FCSV_NEW( pWA )
-   LOCAL aWData := { F_ERROR, .F., .F., "", 0, "", {} }
+   LOCAL aWData := { F_ERROR, .F., .F., "", 0, "", {}, {} }
    USRRDD_AREADATA( pWA, aWData )
    RETURN HB_SUCCESS
 
@@ -168,7 +237,7 @@ STATIC FUNCTION FCSV_CREATE( nWA, aOpenInfo )
 
 STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
    LOCAL cName, nMode, nHandle, aWData, aField, oError, nResult, cDelimDetectado
-   LOCAL cHeaderLine, aNames, nI, cLine
+   LOCAL cHeaderLine, aNames, aParsedDef, nI, cLine, cPrimeiraLinha
 
    IF aOpenInfo[ UR_OI_ALIAS ] == NIL
       hb_FNameSplit( aOpenInfo[ UR_OI_NAME ], , @cName )
@@ -193,6 +262,18 @@ STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
       RETURN HB_FAILURE
    ENDIF
 
+   // >>> DETECÇÃO AUTOMÁTICA INTELIGENTE PARA ARQUIVOS TIPO BA01 <<<
+   cPrimeiraLinha := Space( 256 )
+   FRead( nHandle, @cPrimeiraLinha, 256 )
+   FSeek( nHandle, 0, FS_SET )
+
+   IF ",N," $ Upper( cPrimeiraLinha ) .OR. ",C," $ Upper( cPrimeiraLinha ) .OR. ",D," $ Upper( cPrimeiraLinha )
+      s_cFieldDelim  := ","
+      s_lUseHeader   := .T.
+      s_lUseTypedCSV := .T.
+      s_lUseSplit    := .T.
+   ENDIF
+
    aWData := USRRDD_AREADATA( nWA )
    aWData[ 1 ] := nHandle
    aWData[ 2 ] := .F.
@@ -201,61 +282,101 @@ STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
    aWData[ 5 ] := 0
    aWData[ 6 ] := ""
    aWData[ 7 ] := {}
+   aWData[ 8 ] := {}
 
-   IF s_lUseHeader
-      cHeaderLine := FREADLINE( nHandle, s_nReadSize, .T., cDelimDetectado )
-      IF cHeaderLine <> '__FINAL__'
-         IF s_lUseSplit
-            aNames := SplitAspasRDD( cHeaderLine, s_cFieldDelim )
-         ELSE
-            aNames := hb_ATokens( cHeaderLine, s_cFieldDelim )
-         ENDIF   
-         aWData[ 7 ] := aNames
-         
-         UR_SUPER_SETFIELDEXTENT( nWA, Len( aNames ) )
-         FOR nI := 1 TO Len( aNames )
-            aField := Array( UR_FI_SIZE )
-            aField[ UR_FI_NAME ]    := AllTrim( StrTran( aNames[ nI ], '"', '' ) )
-            aField[ UR_FI_TYPE ]    := "C"
-            aField[ UR_FI_TYPEEXT ] := 0
-            aField[ UR_FI_LEN ]     := 0
-            aField[ UR_FI_DEC ]     := 0
-            UR_SUPER_ADDFIELD( nWA, aField )
-         NEXT
-      ENDIF
-   ENDIF
-
-   IF !s_lUseHeader .OR. Len( aWData[ 7 ] ) == 0
-      cLine := FREADLINE( nHandle, s_nReadSize, .T., cDelimDetectado )
-      IF cLine <> '__FINAL__'
-         IF s_lUseSplit
-           aNames := SplitAspasRDD( cLine, s_cFieldDelim )
-         ELSE
-           aNames := hb_ATokens( cLine, s_cFieldDelim )
-         ENDIF  
-         UR_SUPER_SETFIELDEXTENT( nWA, Len( aNames ) )
-         FOR nI := 1 TO Len( aNames )
-            aField := Array( UR_FI_SIZE )
-            aField[ UR_FI_NAME ]    := "CAMPO" + AllTrim( Str( nI ) )
-            aField[ UR_FI_TYPE ]    := "C"
-            aField[ UR_FI_TYPEEXT ] := 0
-            aField[ UR_FI_LEN ]     := 0
-            aField[ UR_FI_DEC ]     := 0
-            UR_SUPER_ADDFIELD( nWA, aField )
-         NEXT
-      ELSE
-         UR_SUPER_SETFIELDEXTENT( nWA, 1 )
+   // 1. SE O CABEÇALHO FOI PASSADO MANUALMENTE VIA MATRIZ
+   IF Len( s_aManualHeader ) > 0
+      UR_SUPER_SETFIELDEXTENT( nWA, Len( s_aManualHeader ) )
+      FOR nI := 1 TO Len( s_aManualHeader )
          aField := Array( UR_FI_SIZE )
-         aField[ UR_FI_NAME ]    := "CAMPO1"
+         IF s_lUseTypedCSV
+            aParsedDef := ParseFieldDefinition( s_aManualHeader[ nI ] )
+            aField[ UR_FI_NAME ]    := AllTrim( aParsedDef[ 1 ] )
+            AAdd( aWData[ 8 ], { aParsedDef[ 1 ], aParsedDef[ 2 ], aParsedDef[ 3 ], aParsedDef[ 4 ] } )
+            AAdd( aWData[ 7 ], aParsedDef[ 1 ] )
+         ELSE
+            aField[ UR_FI_NAME ]    := AllTrim( StrTran( s_aManualHeader[ nI ], '"', '' ) )
+            AAdd( aWData[ 8 ], { aField[ UR_FI_NAME ], "C", 0, 0 } )
+            AAdd( aWData[ 7 ], aField[ UR_FI_NAME ] )
+         ENDIF
+         
          aField[ UR_FI_TYPE ]    := "C"
          aField[ UR_FI_TYPEEXT ] := 0
          aField[ UR_FI_LEN ]     := 0
          aField[ UR_FI_DEC ]     := 0
          UR_SUPER_ADDFIELD( nWA, aField )
-      ENDIF
-      FSeek( nHandle, 0, FS_SET )
+      NEXT
+   ELSE
+      // 2. LEITURA AUTOMÁTICA DO ARQUIVO CSV
       IF s_lUseHeader
-         FREADLINE( nHandle, s_nReadSize, .T., cDelimDetectado )
+         cHeaderLine := FREADLINE( nHandle, s_nReadSize, .T., cDelimDetectado )
+         IF cHeaderLine <> '__FINAL__'
+            IF s_lUseSplit
+               aNames := SplitAspasRDD( cHeaderLine, s_cFieldDelim )
+            ELSE
+               aNames := hb_ATokens( cHeaderLine, s_cFieldDelim )
+            ENDIF   
+            
+            UR_SUPER_SETFIELDEXTENT( nWA, Len( aNames ) )
+            FOR nI := 1 TO Len( aNames )
+               aField := Array( UR_FI_SIZE )
+               
+               IF s_lUseTypedCSV
+                  aParsedDef := ParseFieldDefinition( aNames[ nI ] )
+                  aField[ UR_FI_NAME ] := AllTrim( aParsedDef[ 1 ] )
+                  AAdd( aWData[ 8 ], { aParsedDef[ 1 ], aParsedDef[ 2 ], aParsedDef[ 3 ], aParsedDef[ 4 ] } )
+                  AAdd( aWData[ 7 ], aParsedDef[ 1 ] ) // Armazena apenas o nome limpo em aWData[7]
+               ELSE
+                  aField[ UR_FI_NAME ] := AllTrim( StrTran( aNames[ nI ], '"', '' ) )
+                  AAdd( aWData[ 8 ], { aField[ UR_FI_NAME ], "C", 0, 0 } )
+                  AAdd( aWData[ 7 ], aField[ UR_FI_NAME ] ) // Armazena apenas o nome limpo em aWData[7]
+               ENDIF
+               
+               aField[ UR_FI_TYPE ]    := "C"
+               aField[ UR_FI_TYPEEXT ] := 0
+               aField[ UR_FI_LEN ]     := 0
+               aField[ UR_FI_DEC ]     := 0
+               UR_SUPER_ADDFIELD( nWA, aField )
+            NEXT
+         ENDIF
+      ENDIF
+
+      IF !s_lUseHeader .OR. Len( aWData[ 7 ] ) == 0
+         cLine := FREADLINE( nHandle, s_nReadSize, .T., cDelimDetectado )
+         IF cLine <> '__FINAL__'
+            IF s_lUseSplit
+              aNames := SplitAspasRDD( cLine, s_cFieldDelim )
+            ELSE
+              aNames := hb_ATokens( cLine, s_cFieldDelim )
+            ENDIF  
+            UR_SUPER_SETFIELDEXTENT( nWA, Len( aNames ) )
+            FOR nI := 1 TO Len( aNames )
+               aField := Array( UR_FI_SIZE )
+               aField[ UR_FI_NAME ]    := "CAMPO" + AllTrim( Str( nI ) )
+               aField[ UR_FI_TYPE ]    := "C"
+               aField[ UR_FI_TYPEEXT ] := 0
+               aField[ UR_FI_LEN ]     := 0
+               aField[ UR_FI_DEC ]     := 0
+               UR_SUPER_ADDFIELD( nWA, aField )
+               AAdd( aWData[ 8 ], { aField[ UR_FI_NAME ], "C", 0, 0 } )
+               AAdd( aWData[ 7 ], aField[ UR_FI_NAME ] )
+            NEXT
+         ELSE
+            UR_SUPER_SETFIELDEXTENT( nWA, 1 )
+            aField := Array( UR_FI_SIZE )
+            aField[ UR_FI_NAME ]    := "CAMPO1"
+            aField[ UR_FI_TYPE ]    := "C"
+            aField[ UR_FI_TYPEEXT ] := 0
+            aField[ UR_FI_LEN ]     := 0
+            aField[ UR_FI_DEC ]     := 0
+            UR_SUPER_ADDFIELD( nWA, aField )
+            AAdd( aWData[ 8 ], { "CAMPO1", "C", 0, 0 } )
+            AAdd( aWData[ 7 ], "CAMPO1" )
+         ENDIF
+         FSeek( nHandle, 0, FS_SET )
+         IF s_lUseHeader
+            FREADLINE( nHandle, s_nReadSize, .T., cDelimDetectado )
+         ENDIF
       ENDIF
    ENDIF
 
@@ -288,7 +409,7 @@ STATIC FUNCTION FCSV_READNEXT( aWData )
       aWData[ 5 ]++
       RETURN HB_SUCCESS
    ENDIF
-   
+
    RETURN HB_FAILURE
 
 STATIC FUNCTION FCSV_GETVALUE( nWA, nField, xValue )
@@ -323,8 +444,11 @@ STATIC FUNCTION FCSV_GOTOP( nWA )
    LOCAL aWData := USRRDD_AREADATA( nWA )
    
    FSeek( aWData[ 1 ], 0, FS_SET )
-   IF s_lUseHeader
-      FREADLINE( aWData[ 1 ], s_nReadSize, .T., aWData[ 4 ] )
+   
+   IF Len( s_aManualHeader ) == 0
+      IF s_lUseHeader
+         FREADLINE( aWData[ 1 ], s_nReadSize, .T., aWData[ 4 ] )
+      ENDIF
    ENDIF
    
    aWData[ 2 ] := .T.
@@ -424,8 +548,10 @@ STATIC FUNCTION FCSV_RECCOUNT( nWA, nRecords )
    nLines := 0
 
    FSeek( nHandle, 0, FS_SET )
-   IF s_lUseHeader
-      FREADLINE( nHandle, s_nReadSize, .T., aWData[ 4 ] )
+   IF Len( s_aManualHeader ) == 0
+      IF s_lUseHeader
+         FREADLINE( nHandle, s_nReadSize, .T., aWData[ 4 ] )
+      ENDIF
    ENDIF
    
    WHILE .T.
