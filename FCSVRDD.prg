@@ -343,6 +343,17 @@ STATIC FUNCTION StrDateRdd( xData )
    ENDIF
 
    RETURN dRet
+   
+   STATIC FUNCTION GravarLogFCSVRDD( cMensagem, cArquivo )
+   LOCAL nHandleLog
+   
+   nHandleLog := FCreate( "FCSVRDD_Erros.log", FC_NORMAL )
+   IF nHandleLog != F_ERROR
+      FSeek( nHandleLog, 0, FS_END )
+      FWrite( nHandleLog, "[" + DToC( Date()) + " " + Time() + "] " + cArquivo + ": " + cMensagem + CRLF )
+      FClose( nHandleLog )
+   ENDIF
+   RETURN NIL
 
 // +--------------------------------------------------------------------
 // + Metodos Internos do RDD
@@ -383,6 +394,8 @@ STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
 
    nHandle := FOpen( aOpenInfo[ UR_OI_NAME ], nMode )
    IF nHandle == F_ERROR
+      GravarLogFCSVRDD( "Erro ao abrir arquivo. OS Code: " + AllTrim( Str( FError() ) ), aOpenInfo[ UR_OI_NAME ] )
+      
       oError := ErrorNew()
       oError:GenCode     := EG_OPEN
       oError:SubCode     := 1001
@@ -552,21 +565,36 @@ STATIC FUNCTION FCSV_READNEXT( aWData )
 
    RETURN HB_FAILURE
 
+
 // +--------------------------------------------------------------------
-// + Obtenção de Valor do Campo (Agora com Inteligência Tipada - Mod 1)
+// + Obtenção de Valor do Campo (Suporte a Posição Fixa, Delimitados e Tipagem)
 // +--------------------------------------------------------------------
 STATIC FUNCTION FCSV_GETVALUE( nWA, nField, xValue )
    LOCAL aWData := USRRDD_AREADATA( nWA )
-   LOCAL aCols, cType, xRawVal
+   LOCAL aCols, cType, xRawVal, aStruct, nI, nPos := 1, nLen
 
    IF aWData[ 3 ]
       xValue := ""
       RETURN HB_SUCCESS
    ENDIF
 
+   // 1. SE O DELIMITADOR ESTIVER VAZIO, TRATA COMO TAMANHO FIXO (SDF/POSIÇÃO POR BYTE)
    IF Empty( s_cFieldDelim )
-      xRawVal := aWData[ 6 ]
+      aStruct := aWData[ 8 ] // Matriz estrutural {cName, cType, nLen, nDec}
+      
+      IF nField >= 1 .AND. Len( aStruct ) > 0 .AND. nField <= Len( aStruct )
+         nPos := 1
+         FOR nI := 1 TO nField - 1
+            nPos += aStruct[ nI, 3 ] // Soma o tamanho (Len) dos campos anteriores
+         NEXT
+         
+         nLen := aStruct[ nField, 3 ]
+         xRawVal := SubStr( aWData[ 6 ], nPos, nLen )
+      ELSE
+         xRawVal := ""
+      ENDIF
    ELSE
+      // 2. COMPORTAMENTO PADRÃO DE DELIMITADOS (CSV / PIPE / TAB)
       IF s_lUseSplit
          aCols := SplitAspasRDD( aWData[ 6 ], s_cFieldDelim )
       ELSE
@@ -580,9 +608,9 @@ STATIC FUNCTION FCSV_GETVALUE( nWA, nField, xValue )
       ENDIF
    ENDIF
 
-   // >>> APLICAÇÃO DA REGRA 1: RETORNO CONVERTIDO SE MATRIZ EXISTIR E PARÂMETRO ATIVO <<<
+   // 3. APLICAÇÃO DA REGRA DE RETORNO CONVERTIDO (TIPADO) SE ATIVO
    IF s_lRetornaTipado .AND. Len( aWData[ 8 ] ) >= nField
-      cType := aWData[ 8 ][ nField ][ 2 ] // Pega o tipo original (N, C, D, L, M) da matriz auxiliar
+      cType := aWData[ 8 ][ nField ][ 2 ] // Pega o tipo original (N, C, D, L, M)
       
       DO CASE
          CASE cType == "N"
@@ -592,11 +620,15 @@ STATIC FUNCTION FCSV_GETVALUE( nWA, nField, xValue )
          CASE cType == "L"
             xValue := StrLogicrdd( xRawVal, .F. )
          OTHERWISE
-            xValue := xRawVal // Para "C", "M" ou falhas, retorna o caractere original
+            xValue := AllTrim( xRawVal ) // Limpa espaços extras para strings/caracteres
       ENDCASE
    ELSE
-      // Comportamento normal do RDD: Retorna caractere bruto
-      xValue := xRawVal
+      // Comportamento normal do RDD: Retorna bruto (com Trim se for tamanho fixo)
+      IF Empty( s_cFieldDelim )
+         xValue := AllTrim( xRawVal )
+      ELSE
+         xValue := xRawVal
+      ENDIF
    ENDIF
 
    RETURN HB_SUCCESS
