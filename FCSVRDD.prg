@@ -1,5 +1,6 @@
 /*
  * FCSVRDD RDD - Completo, Otimizado e Seguro para Arquivos CSV Grandes
+ * Inclui: Tipagem Dinâmica, Split Robusto, Detecção Automática (Pipe/Tab/Tipado)
  */
 
 #include "rddsys.ch"
@@ -11,13 +12,14 @@
 
 ANNOUNCE FCSVRDD
 
-STATIC s_nReadSize     := 1024
-STATIC s_lUseSplit     := .F.
-STATIC s_cFieldDelim   := ";"
-STATIC s_lUseHeader    := .F.
-STATIC s_lUseRecCount  := .F.
-STATIC s_lUseTypedCSV  := .F.
-STATIC s_aManualHeader := {}   // Armazena a matriz de cabeçalho/tipagem passada manualmente
+STATIC s_nReadSize      := 1024
+STATIC s_lUseSplit      := .F.
+STATIC s_cFieldDelim    := ";"
+STATIC s_lUseHeader     := .F.
+STATIC s_lUseRecCount   := .F.
+STATIC s_lUseTypedCSV   := .F.  // o motor rdd trabalha tipado mais em csv e melhor usar carater e so o retono tipado com o parametro s_lRetornaTipado
+STATIC s_lRetornaTipado := .F. // Mod 1: Parâmetro para retornar dados já convertidos (Tipados)
+STATIC s_aManualHeader  := {}  // Armazena a matriz de cabeçalho/tipagem passada manualmente
 
 // +--------------------------------------------------------------------
 // + Funções de Configuração Global
@@ -58,6 +60,13 @@ FUNCTION FCSV_USARTIPAGEM( lUse )
       s_lUseTypedCSV := lUse
    ENDIF
    RETURN s_lUseTypedCSV
+
+// Função para ativar/desativar a conversão dos dados no GetValue (Mod 1)
+FUNCTION FCSV_RETORNATIPADO( lUse )
+   IF ValType( lUse ) == "L"
+      s_lRetornaTipado := lUse
+   ENDIF
+   RETURN s_lRetornaTipado
 
 // Permite injetar o cabeçalho/estrutura manualmente via matriz (Array)
 FUNCTION FCSV_SETCABECALHO( aCabec )
@@ -213,6 +222,73 @@ STATIC FUNCTION ParseFieldDefinition( cDef )
    RETURN { cName, cType, nLen, nDec }
 
 // +--------------------------------------------------------------------
+// + Conversão Lógica Robusta (Mod 5)
+// +--------------------------------------------------------------------
+STATIC FUNCTION StrLogicrdd( cVAL, lDEFAULT )
+   IF ValType( lDEFAULT ) <> "L"
+      lDEFAULT := .F.
+   ENDIF
+   cVal := AllTrim( cVal )
+   
+   SWITCH Upper( cVal )
+   CASE ".T."
+   CASE "TRUE"
+   CASE "YES"
+   CASE "SIM"
+   CASE "ON"
+   CASE "Y"
+   CASE "1"
+   CASE "T"
+   CASE "S"
+      RETURN .T.
+   CASE ".F."
+   CASE "FALSE"
+   CASE "NO"
+   CASE "NAO"
+   CASE "OFF"
+   CASE "N"
+   CASE "0"
+   CASE "F"
+   CASE "<NULL>"
+   CASE "NULL"
+   CASE "NUL"
+   CASE "NIL"
+      RETURN .F.
+   ENDSWITCH
+
+   RETURN lDEFAULT
+
+// +--------------------------------------------------------------------
+// + Conversão de Data Inteligente (Mod 6)
+// +--------------------------------------------------------------------
+STATIC FUNCTION StrDateRdd( cVal )
+   LOCAL dRet := CToD("")
+   
+   cVal := AllTrim( cVal )
+   IF Empty( cVal ) .OR. cVal == "NULL" .OR. cVal == "0000-00-00" .OR. cVal == "00/00/0000"
+      RETURN dRet
+   ENDIF
+
+   IF Len( cVal ) >= 10
+      IF SubStr( cVal, 5, 1 ) $ "-/"
+         // Formatos YYYY-MM-DD ou YYYY/MM/DD
+         dRet := SToD( SubStr( cVal, 1, 4 ) + SubStr( cVal, 6, 2 ) + SubStr( cVal, 9, 2 ) )
+      ELSEIF SubStr( cVal, 3, 1 ) $ "-/"
+         // Formatos DD/MM/YYYY ou DD-MM-YYYY
+         dRet := SToD( SubStr( cVal, 7, 4 ) + SubStr( cVal, 4, 2 ) + SubStr( cVal, 1, 2 ) )
+      ENDIF
+   ELSEIF Len( cVal ) == 8 .AND. IsDigit( cVal )
+      // Formato puramente YYYYMMDD
+      dRet := SToD( cVal )
+   ELSE
+      // Fallback para conversão padrão regional
+      dRet := CToD( cVal )
+   ENDIF
+
+   RETURN dRet
+
+
+// +--------------------------------------------------------------------
 // + Metodos Internos do RDD
 // +--------------------------------------------------------------------
 
@@ -262,12 +338,20 @@ STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
       RETURN HB_FAILURE
    ENDIF
 
-   // >>> DETECÇÃO AUTOMÁTICA INTELIGENTE PARA ARQUIVOS TIPO BA01 <<<
-   cPrimeiraLinha := Space( 256 )
-   FRead( nHandle, @cPrimeiraLinha, 256 )
-   FSeek( nHandle, 0, FS_SET )
+   // >>> DETECÇÃO AUTOMÁTICA INTELIGENTE <<<
+   cPrimeiraLinha := Space( s_nReadSize )
+   FRead( nHandle, @cPrimeiraLinha, s_nReadSize )
+   FSeek( nHandle, 0, FS_SET ) // Retorna o ponteiro
 
-   IF ",N," $ Upper( cPrimeiraLinha ) .OR. ",C," $ Upper( cPrimeiraLinha ) .OR. ",D," $ Upper( cPrimeiraLinha )
+   // Mod 2 e 3: Ajustar para Pipe ou Tab caso existam na 1ª linha
+   IF "|" $ cPrimeiraLinha
+      s_cFieldDelim := "|"
+   ELSEIF Chr(9) $ cPrimeiraLinha
+      s_cFieldDelim := Chr(9)
+   ENDIF
+
+   // Mod 4: Detecção super segura de Arquivo Tipado (Exige '","' p/ não confundir com dados)
+   IF ( ",N," $ Upper( cPrimeiraLinha ) .OR. ",C," $ Upper( cPrimeiraLinha ) .OR. ",D," $ Upper( cPrimeiraLinha ) ) .AND. At( '","', cPrimeiraLinha ) > 0
       s_cFieldDelim  := ","
       s_lUseHeader   := .T.
       s_lUseTypedCSV := .T.
@@ -329,7 +413,7 @@ STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
                ELSE
                   aField[ UR_FI_NAME ] := AllTrim( StrTran( aNames[ nI ], '"', '' ) )
                   AAdd( aWData[ 8 ], { aField[ UR_FI_NAME ], "C", 0, 0 } )
-                  AAdd( aWData[ 7 ], aField[ UR_FI_NAME ] ) // Armazena apenas o nome limpo em aWData[7]
+                  AAdd( aWData[ 7 ], aField[ UR_FI_NAME ] ) // Armazena apenas o nome limpo
                ENDIF
                
                aField[ UR_FI_TYPE ]    := "C"
@@ -412,9 +496,12 @@ STATIC FUNCTION FCSV_READNEXT( aWData )
 
    RETURN HB_FAILURE
 
+// +--------------------------------------------------------------------
+// + Obtenção de Valor do Campo (Agora com Inteligência Tipada - Mod 1)
+// +--------------------------------------------------------------------
 STATIC FUNCTION FCSV_GETVALUE( nWA, nField, xValue )
    LOCAL aWData := USRRDD_AREADATA( nWA )
-   LOCAL aCols
+   LOCAL aCols, cType, xRawVal
 
    IF aWData[ 3 ]
       xValue := ""
@@ -422,20 +509,38 @@ STATIC FUNCTION FCSV_GETVALUE( nWA, nField, xValue )
    ENDIF
 
    IF Empty( s_cFieldDelim )
-      xValue := aWData[ 6 ]
-      RETURN HB_SUCCESS
+      xRawVal := aWData[ 6 ]
+   ELSE
+      IF s_lUseSplit
+         aCols := SplitAspasRDD( aWData[ 6 ], s_cFieldDelim )
+      ELSE
+         aCols := hb_ATokens( aWData[ 6 ], s_cFieldDelim )
+      ENDIF
+
+      IF nField >= 1 .AND. Len( aCols ) > 0 .AND. nField <= Len( aCols )
+         xRawVal := aCols[ nField ]
+      ELSE
+         xRawVal := ""
+      ENDIF
    ENDIF
 
-   IF s_lUseSplit
-      aCols := SplitAspasRDD( aWData[ 6 ], s_cFieldDelim )
+   // >>> APLICAÇÃO DA REGRA 1: RETORNO CONVERTIDO SE MATRIZ EXISTIR E PARÂMETRO ATIVO <<<
+   IF s_lRetornaTipado .AND. Len( aWData[ 8 ] ) >= nField
+      cType := aWData[ 8 ][ nField ][ 2 ] // Pega o tipo original (N, C, D, L, M) da matriz auxiliar
+      
+      DO CASE
+         CASE cType == "N"
+            xValue := Val( xRawVal )
+         CASE cType == "D"
+            xValue := StrDateRdd( xRawVal )
+         CASE cType == "L"
+            xValue := StrLogicrdd( xRawVal, .F. )
+         OTHERWISE
+            xValue := xRawVal // Para "C", "M" ou falhas, retorna o caractere original
+      ENDCASE
    ELSE
-      aCols := hb_ATokens( aWData[ 6 ], s_cFieldDelim )
-   ENDIF
-
-   IF nField >= 1 .AND. Len( aCols ) > 0 .AND. nField <= Len( aCols )
-      xValue := aCols[ nField ]
-   ELSE
-      xValue := ""
+      // Comportamento normal do RDD: Retorna caractere bruto
+      xValue := xRawVal
    ENDIF
 
    RETURN HB_SUCCESS
