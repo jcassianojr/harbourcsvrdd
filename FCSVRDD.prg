@@ -258,35 +258,91 @@ STATIC FUNCTION StrLogicrdd( cVAL, lDEFAULT )
 
    RETURN lDEFAULT
 
+
 // +--------------------------------------------------------------------
-// + Conversão de Data Inteligente (Mod 6)
+// + Conversão de Data Inteligente (Mod 6 - Final)
+// + Baseado na detecção de separadores antes da limpeza
 // +--------------------------------------------------------------------
-STATIC FUNCTION StrDateRdd( cVal )
-   LOCAL dRet := CToD("")
-   
-   cVal := AllTrim( cVal )
-   IF Empty( cVal ) .OR. cVal == "NULL" .OR. cVal == "0000-00-00" .OR. cVal == "00/00/0000"
+STATIC FUNCTION StrDateRdd( xData )
+   LOCAL dRet := CToD( "" )
+   LOCAL cTemp, aParts, cAno, cMes, cDia, nAno
+
+   // 1. Já é data?
+   IF ValType( xData ) == "D"
+      RETURN xData
+   ENDIF
+
+   // 2. É nulo ou inválido?
+   IF ValType( xData ) <> "C" .OR. Empty( xData ) .OR. xData == "NULL"
       RETURN dRet
    ENDIF
 
-   IF Len( cVal ) >= 10
-      IF SubStr( cVal, 5, 1 ) $ "-/"
-         // Formatos YYYY-MM-DD ou YYYY/MM/DD
-         dRet := SToD( SubStr( cVal, 1, 4 ) + SubStr( cVal, 6, 2 ) + SubStr( cVal, 9, 2 ) )
-      ELSEIF SubStr( cVal, 3, 1 ) $ "-/"
-         // Formatos DD/MM/YYYY ou DD-MM-YYYY
-         dRet := SToD( SubStr( cVal, 7, 4 ) + SubStr( cVal, 4, 2 ) + SubStr( cVal, 1, 2 ) )
+   xData := AllTrim( xData )
+
+   // 3. Padroniza todos os separadores conhecidos para uma barra "/"
+   cTemp := StrTran( xData, "-", "/" )
+   cTemp := StrTran( cTemp, ".", "/" )
+
+   // 4. Analisa a estrutura COM os separadores
+   aParts := hb_ATokens( cTemp, "/" )
+
+   IF Len( aParts ) == 3
+      // TEM SEPARADOR! Identificamos o formato pelo tamanho do primeiro bloco
+      IF Len( aParts[ 1 ] ) == 4
+         // Formato YYYY/MM/DD (O Ano veio primeiro)
+         cAno := aParts[ 1 ]
+         cMes := StrZero( Val( aParts[ 2 ] ), 2 ) // Garante 2 dígitos (ex: 3 vira 03)
+         cDia := StrZero( Val( aParts[ 3 ] ), 2 )
+      ELSE
+         // Formato DD/MM/YYYY ou DD/MM/YY (O Dia veio primeiro)
+         cDia := StrZero( Val( aParts[ 1 ] ), 2 )
+         cMes := StrZero( Val( aParts[ 2 ] ), 2 )
+         cAno := aParts[ 3 ]
+         
+         // Lógica de Século para Anos com 2 dígitos (ex: 05/03/21)
+         IF Len( cAno ) == 2
+            nAno := Val( cAno )
+            IF nAno < 50
+               cAno := "20" + cAno
+            ELSE
+               cAno := "19" + cAno
+            ENDIF
+         ENDIF
       ENDIF
-   ELSEIF Len( cVal ) == 8 .AND. IsDigit( cVal )
-      // Formato puramente YYYYMMDD
-      dRet := SToD( cVal )
+      
+      // Validação contra zeros vazios
+      IF cAno + cMes + cDia == "00000000"
+         RETURN dRet
+      ENDIF
+      
+      // Converte usando a forma mais veloz do Harbour: SToD("AAAAMMDD")
+      RETURN SToD( cAno + cMes + cDia )
+
    ELSE
-      // Fallback para conversão padrão regional
-      dRet := CToD( cVal )
+      // NÃO TEM SEPARADOR! Veio tudo grudado. Usa a lógica robusta de tamanho
+      IF Len( cTemp ) == 8
+         // AAAAMMDD ou DDMMAAAA
+         IF Val( Left( cTemp, 4 ) ) > 1900
+            dRet := SToD( cTemp )
+         ELSE
+            dRet := SToD( Right( cTemp, 4 ) + SubStr( cTemp, 3, 2 ) + Left( cTemp, 2 ) )
+         ENDIF
+      ELSEIF Len( cTemp ) == 6
+         // DDMMAA (Tudo grudado e ano com 2 dígitos)
+         nAno := Val( Right( cTemp, 2 ) )
+         IF nAno < 50
+            cAno := "20" + Right( cTemp, 2 )
+         ELSE
+            cAno := "19" + Right( cTemp, 2 )
+         ENDIF
+         dRet := SToD( cAno + SubStr( cTemp, 3, 2 ) + Left( cTemp, 2 ) )
+      ELSE
+         // Tenta o CToD nativo como última esperança se a string for muito atípica
+         dRet := CToD( xData )
+      ENDIF
    ENDIF
 
    RETURN dRet
-
 
 // +--------------------------------------------------------------------
 // + Metodos Internos do RDD
