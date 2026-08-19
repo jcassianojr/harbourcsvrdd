@@ -1,7 +1,7 @@
 /*
  * Classe: CSVClass
  * Objetivo: Leitura linha a linha de arquivos CSV com cursor DBF-like.
- * Integracao: FCSVRDD (Tipagem/Split) + TextDBServer (ReadLineCustom / Delimitadores).
+ * Integracao: FCSVRDD (Tipagem/Split) + Buffer Customizado + Cabecalho Manual.
  */
 
 #include "hbclass.ch"
@@ -23,10 +23,11 @@ CREATE CLASS CSVClass
    VAR cCurrentLine     
    VAR lEof
    VAR lBof
-   VAR dwMaxBytes       // Tamanho maximo do bloco de leitura
+   VAR dwMaxBytes       // Tamanho inicial do buffer (Padrao 1024)
+   VAR aManualHeader    // Matriz de cabecalho injetada manualmente
 
-   // Assinatura rigorosamente unificada
-   METHOD New( cFileName, cDelimiter, lHeader, lRetornaTipado, lSplit, cLineDelimiter )
+   // Assinatura atualizada com todos os parametros do RDD
+   METHOD New( cFileName, cDelimiter, lHeader, lRetornaTipado, lSplit, cLineDelimiter, aManualHeader, nReadSize )
    METHOD Open()
    METHOD Close()
    METHOD GoTop()
@@ -52,17 +53,20 @@ CREATE CLASS CSVClass
    METHOD ParseFieldDefinition( cDef )
    METHOD StrLogic( cVal, lDefault )
    METHOD StrDate( xData )
+   METHOD GetLine()
+   METHOD GetStructOriginal() INLINE ::aStruct
 
 ENDCLASS
 
-METHOD New( cFileName, cDelimiter, lHeader, lRetornaTipado, lSplit, cLineDelimiter ) CLASS CSVClass
-   ::cFile      := cFileName
-   ::cDelim     := hb_DefaultValue( cDelimiter, "" )
-   ::lHasHeader := hb_DefaultValue( lHeader, .T. )
-   ::lTyped     := hb_DefaultValue( lRetornaTipado, .F. )
-   ::lUseSplit  := hb_DefaultValue( lSplit, .F. )
-   ::cLineDelim := hb_DefaultValue( cLineDelimiter, "" )
-   ::dwMaxBytes := 4096 // Equivalente ao alocador de memoria do VO //[cite: 2]
+METHOD New( cFileName, cDelimiter, lHeader, lRetornaTipado, lSplit, cLineDelimiter, aManualHeader, nReadSize ) CLASS CSVClass
+   ::cFile         := cFileName
+   ::cDelim        := hb_DefaultValue( cDelimiter, "" )
+   ::lHasHeader    := hb_DefaultValue( lHeader, .T. )
+   ::lTyped        := hb_DefaultValue( lRetornaTipado, .F. )
+   ::lUseSplit     := hb_DefaultValue( lSplit, .F. )
+   ::cLineDelim    := hb_DefaultValue( cLineDelimiter, "" )
+   ::aManualHeader := hb_DefaultValue( aManualHeader, {} )
+   ::dwMaxBytes    := hb_DefaultValue( nReadSize, 1024 ) // Alterado para 1024 conforme regra do RDD //[cite: 3]
    
    ::nHandle        := F_ERROR
    ::nStartDataByte := 0
@@ -74,6 +78,16 @@ METHOD New( cFileName, cDelimiter, lHeader, lRetornaTipado, lSplit, cLineDelimit
    ::lBof           := .T.
 RETURN Self
 
+// +--------------------------------------------------------------------
+// + Retorna o registro atual em formato de string/linha bruta original
+// +--------------------------------------------------------------------
+METHOD GetLine() CLASS CSVClass
+   IF ::nRecNo < 1 .OR. ::lEof
+      RETURN ""
+   ENDIF
+   // Retorna exatamente a linha crua como foi lida do disco
+   RETURN ::cCurrentLine
+
 METHOD Open() CLASS CSVClass
    LOCAL cHeaderLine, aNames, nI, aDef, cField
 
@@ -82,7 +96,6 @@ METHOD Open() CLASS CSVClass
       RETURN .F.
    ENDIF
 
-   // Autodeteccao de Delimitadores baseada no VO //[cite: 2]
    IF Empty( ::cLineDelim )
       ::cLineDelim := ::DetectLineDelimiter()
    ENDIF
@@ -91,34 +104,50 @@ METHOD Open() CLASS CSVClass
       ::cDelim := ::DetectDelimiter()
    ENDIF
 
-   // Garante ponteiro no inicio antes de ler header
    FSeek( ::nHandle, 0, FS_SET )
 
-   // Processa o Header
-   cHeaderLine := ::ReadLineCustom()
-   aNames := ::SplitCSV( cHeaderLine )
-   ::nFields := Len( aNames )
-
-   FOR nI := 1 TO ::nFields
-      IF ::lHasHeader .AND. ::lTyped
-         aDef := ::ParseFieldDefinition( aNames[ nI ] ) //[cite: 3]
-         AAdd( ::aStruct, { aDef[ 1 ], aDef[ 2 ], aDef[ 3 ], aDef[ 4 ] } )
-      ELSEIF ::lHasHeader
-         cField := Upper( AllTrim( StrTran( aNames[ nI ], '"', '' ) ) ) //[cite: 3]
-         AAdd( ::aStruct, { cField, "C", 0, 0 } )
-      ELSE
-         AAdd( ::aStruct, { "CAMPO" + AllTrim( Str( nI ) ), "C", 0, 0 } )
+   // 1. SE O CABEÇALHO FOI PASSADO MANUALMENTE VIA MATRIZ //[cite: 3]
+   IF Len( ::aManualHeader ) > 0
+      ::nFields := Len( ::aManualHeader )
+      
+      FOR nI := 1 TO ::nFields
+         IF ::lTyped
+            aDef := ::ParseFieldDefinition( ::aManualHeader[ nI ] )
+            AAdd( ::aStruct, { aDef[ 1 ], aDef[ 2 ], aDef[ 3 ], aDef[ 4 ] } )
+         ELSE
+            cField := Upper( AllTrim( StrTran( ::aManualHeader[ nI ], '"', '' ) ) )
+            AAdd( ::aStruct, { cField, "C", 0, 0 } )
+         ENDIF
+      NEXT
+      
+      IF ::lHasHeader
+         ::ReadLineCustom() // Descarta a primeira linha fisica do arquivo pois usara o manual
       ENDIF
-   NEXT
 
-   IF ::lHasHeader
-      // Salva a posicao EXATA logo apos o Header para rebobinar dps //[cite: 2]
-      ::nStartDataByte := FSeek( ::nHandle, 0, FS_RELATIVE )
    ELSE
-      // Se não tem header, rebobina para que o GoTop pegue a 1ª linha como dado
-      ::nStartDataByte := 0
+      // 2. LEITURA AUTOMATICA DO ARQUIVO CSV
+      cHeaderLine := ::ReadLineCustom()
+      aNames := ::SplitCSV( cHeaderLine )
+      ::nFields := Len( aNames )
+
+      FOR nI := 1 TO ::nFields
+         IF ::lHasHeader .AND. ::lTyped
+            aDef := ::ParseFieldDefinition( aNames[ nI ] ) 
+            AAdd( ::aStruct, { aDef[ 1 ], aDef[ 2 ], aDef[ 3 ], aDef[ 4 ] } )
+         ELSEIF ::lHasHeader
+            cField := Upper( AllTrim( StrTran( aNames[ nI ], '"', '' ) ) ) 
+            AAdd( ::aStruct, { cField, "C", 0, 0 } )
+         ELSE
+            AAdd( ::aStruct, { "CAMPO" + AllTrim( Str( nI ) ), "C", 0, 0 } )
+         ENDIF
+      NEXT
+
+      IF !::lHasHeader
+         FSeek( ::nHandle, 0, FS_SET ) // Rebobina pois a primeira linha ja era dado
+      ENDIF
    ENDIF
 
+   ::nStartDataByte := FSeek( ::nHandle, 0, FS_RELATIVE )
    ::GoTop()
 RETURN .T.
 
@@ -130,7 +159,6 @@ METHOD Close() CLASS CSVClass
    ::aStruct := {}
 RETURN NIL
 
-// Logica original de Leitura Fisica (Portado do TextDBServer) //[cite: 2]
 METHOD ReadLineCustom() CLASS CSVClass
    LOCAL cBuffer, nRead, nPos, cResult, nStartPos
 
@@ -138,7 +166,6 @@ METHOD ReadLineCustom() CLASS CSVClass
       RETURN ""
    ENDIF
 
-   // Guarda onde o ponteiro comecou a ler //[cite: 2]
    nStartPos := FSeek( ::nHandle, 0, FS_RELATIVE )
    cBuffer   := Space( ::dwMaxBytes )
    nRead     := FRead( ::nHandle, @cBuffer, ::dwMaxBytes )
@@ -148,13 +175,11 @@ METHOD ReadLineCustom() CLASS CSVClass
       RETURN ""
    ENDIF
 
-   cBuffer := Left( cBuffer, nRead ) //[cite: 2]
-   nPos    := At( ::cLineDelim, cBuffer ) //[cite: 2]
+   cBuffer := Left( cBuffer, nRead ) 
+   nPos    := At( ::cLineDelim, cBuffer ) 
 
    IF nPos > 0
-      // Corta ANTES do delimitador //[cite: 2]
       cResult := Left( cBuffer, nPos - 1 )
-      // REBOBINA O ARQUIVO: exato byte pos delimitador //[cite: 2]
       FSeek( ::nHandle, nStartPos + nPos + Len( ::cLineDelim ) - 1, FS_SET )
    ELSE
       cResult := cBuffer
@@ -165,25 +190,25 @@ METHOD ReadLineCustom() CLASS CSVClass
 RETURN cResult
 
 METHOD DetectLineDelimiter() CLASS CSVClass
-   LOCAL cHeader := Space( 1024 )
+   LOCAL cHeader := Space( ::dwMaxBytes )
    LOCAL nBytes, cRet := hb_osNewLine()
 
    FSeek( ::nHandle, 0, FS_SET )
-   nBytes := FRead( ::nHandle, @cHeader, 1024 ) //[cite: 2]
+   nBytes := FRead( ::nHandle, @cHeader, ::dwMaxBytes ) 
 
    IF nBytes > 0
       cHeader := Left( cHeader, nBytes )
       IF Chr(13) + Chr(10) $ cHeader
-         cRet := Chr(13) + Chr(10) //[cite: 2]
+         cRet := Chr(13) + Chr(10) 
       ELSEIF Chr(10) $ cHeader
-         cRet := Chr(10) //[cite: 2]
+         cRet := Chr(10) 
       ELSEIF Chr(13) $ cHeader
-         cRet := Chr(13) //[cite: 2]
+         cRet := Chr(13) 
       ELSEIF "@@" $ cHeader
-         cRet := "@@" //[cite: 2]
+         cRet := "@@" 
       ENDIF
    ENDIF
-   FSeek( ::nHandle, 0, FS_SET ) //[cite: 2]
+   FSeek( ::nHandle, 0, FS_SET ) 
 RETURN cRet
 
 METHOD DetectDelimiter() CLASS CSVClass
@@ -191,24 +216,24 @@ METHOD DetectDelimiter() CLASS CSVClass
    LOCAL nBytes, cRet := ";"
 
    FSeek( ::nHandle, 0, FS_SET )
-   nBytes := FRead( ::nHandle, @cHeader, 256 ) //[cite: 2]
+   nBytes := FRead( ::nHandle, @cHeader, 256 ) 
 
    IF nBytes > 0
       cHeader := Left( cHeader, nBytes )
       IF Chr(9) $ cHeader
-         cRet := Chr(9) //[cite: 2]
+         cRet := Chr(9) 
       ELSEIF "|" $ cHeader
-         cRet := "|" //[cite: 2]
+         cRet := "|" 
       ELSEIF "," $ cHeader
-         cRet := "," //[cite: 2]
+         cRet := "," 
       ENDIF
    ENDIF
-   FSeek( ::nHandle, 0, FS_SET ) //[cite: 2]
+   FSeek( ::nHandle, 0, FS_SET ) 
 RETURN cRet
 
 METHOD GoTop() CLASS CSVClass
    IF ::nHandle != F_ERROR
-      FSeek( ::nHandle, ::nStartDataByte, FS_SET ) //[cite: 2]
+      FSeek( ::nHandle, ::nStartDataByte, FS_SET ) 
       ::lEof := .F.
       ::lBof := .T.
       ::nRecNo := 0
@@ -300,9 +325,9 @@ METHOD FieldGet( nFieldPos ) CLASS CSVClass
          CASE cType == "N"
             xVal := Val( xRawVal )
          CASE cType == "D"
-            xVal := ::StrDate( xRawVal ) //[cite: 3]
+            xVal := ::StrDate( xRawVal ) 
          CASE cType == "L"
-            xVal := ::StrLogic( xRawVal, .F. ) //[cite: 3]
+            xVal := ::StrLogic( xRawVal, .F. ) 
          OTHERWISE
             xVal := xRawVal
       ENDCASE
@@ -326,9 +351,9 @@ METHOD SplitCSV( cLine ) CLASS CSVClass
    IF Empty( ::cDelim )
       AAdd( aRet, cLine )
    ELSEIF ::lUseSplit
-      aRet := ::SplitAspas( cLine, ::cDelim ) //[cite: 3]
+      aRet := ::SplitAspas( cLine, ::cDelim ) 
    ELSE
-      aRet := hb_ATokens( cLine, ::cDelim ) //[cite: 3]
+      aRet := hb_ATokens( cLine, ::cDelim ) 
    ENDIF
 RETURN aRet
 
@@ -354,7 +379,7 @@ METHOD SplitAspas( cLINHA, cSEPCAMPOS ) CLASS CSVClass
       ELSEIF cChar == cSEPCAMPOS .AND. !lInQuotes
          cVALOR := AllTrim( cVALOR )
          IF Left( cVALOR, 1 ) == '"' .AND. Right( cVALOR, 1 ) == '"' .AND. Len( cVALOR ) >= 2
-            cVALOR := SubStr( cVALOR, 2, Len( cVALOR ) - 2 ) //[cite: 3]
+            cVALOR := SubStr( cVALOR, 2, Len( cVALOR ) - 2 ) 
          ELSEIF Left( cVALOR, 1 ) == '"'
             cVALOR := SubStr( cVALOR, 2 )
          ENDIF
@@ -382,19 +407,19 @@ RETURN aRETU
 METHOD ParseFieldDefinition( cDef ) CLASS CSVClass
    LOCAL aParts, cName := "", cType := "C", nLen := 0, nDec := 0, cSec
    
-   cDef := AllTrim( StrTran( cDef, '"', '' ) ) //[cite: 3]
-   aParts := hb_ATokens( cDef, "," ) //[cite: 3]
+   cDef := AllTrim( StrTran( cDef, '"', '' ) ) 
+   aParts := hb_ATokens( cDef, "," ) 
    
    IF Len( aParts ) > 0; cName := AllTrim( aParts[ 1 ] ); ENDIF
    
    IF Len( aParts ) > 1
       cSec := Upper( AllTrim( aParts[ 2 ] ) )
       IF cSec $ "N,C,D,L,M"
-         cType := cSec //[cite: 3]
+         cType := cSec 
          IF Len( aParts ) > 2; nLen := Val( aParts[ 3 ] ); ENDIF
          IF Len( aParts ) > 3; nDec := Val( aParts[ 4 ] ); ENDIF
       ELSE
-         cType := "N" //[cite: 3]
+         cType := "N" 
          nLen  := Val( cSec )
          IF Len( aParts ) > 2; nDec := Val( aParts[ 3 ] ); ENDIF
       ENDIF
@@ -412,52 +437,52 @@ METHOD StrLogic( cVal, lDefault ) CLASS CSVClass
    
    SWITCH Upper( cVal )
    CASE ".T."; CASE "TRUE"; CASE "YES"; CASE "SIM"; CASE "ON"; CASE "Y"; CASE "1"; CASE "T"; CASE "S"
-      RETURN .T. //[cite: 3]
+      RETURN .T. 
    CASE ".F."; CASE "FALSE"; CASE "NO"; CASE "NAO"; CASE "OFF"; CASE "N"; CASE "0"; CASE "F"; CASE "<NULL>"; CASE "NULL"
-      RETURN .F. //[cite: 3]
+      RETURN .F. 
    ENDSWITCH
 RETURN lDefault
 
 METHOD StrDate( xData ) CLASS CSVClass
    LOCAL dRet := CToD( "" ), cTemp, aParts, cAno, cMes, cDia, nAno
 
-   IF ValType( xData ) == "D"; RETURN xData; ENDIF //[cite: 3]
-   IF ValType( xData ) <> "C" .OR. Empty( xData ) .OR. xData == "NULL"; RETURN dRet; ENDIF //[cite: 3]
+   IF ValType( xData ) == "D"; RETURN xData; ENDIF 
+   IF ValType( xData ) <> "C" .OR. Empty( xData ) .OR. xData == "NULL"; RETURN dRet; ENDIF 
 
    xData := AllTrim( xData )
-   cTemp := StrTran( xData, "-", "/" ) //[cite: 3]
-   cTemp := StrTran( cTemp, ".", "/" ) //[cite: 3]
-   aParts := hb_ATokens( cTemp, "/" ) //[cite: 3]
+   cTemp := StrTran( xData, "-", "/" ) 
+   cTemp := StrTran( cTemp, ".", "/" ) 
+   aParts := hb_ATokens( cTemp, "/" ) 
 
    IF Len( aParts ) == 3
       IF Len( aParts[ 1 ] ) == 4
          cAno := aParts[ 1 ]
-         cMes := StrZero( Val( aParts[ 2 ] ), 2 ) //[cite: 3]
+         cMes := StrZero( Val( aParts[ 2 ] ), 2 ) 
          cDia := StrZero( Val( aParts[ 3 ] ), 2 )
       ELSE
-         cDia := StrZero( Val( aParts[ 1 ] ), 2 ) //[cite: 3]
+         cDia := StrZero( Val( aParts[ 1 ] ), 2 ) 
          cMes := StrZero( Val( aParts[ 2 ] ), 2 )
          cAno := aParts[ 3 ]
          IF Len( cAno ) == 2
             nAno := Val( cAno )
-            cAno := iif( nAno < 50, "20" + cAno, "19" + cAno ) //[cite: 3]
+            cAno := iif( nAno < 50, "20" + cAno, "19" + cAno ) 
          ENDIF
       ENDIF
-      IF cAno + cMes + cDia == "00000000"; RETURN dRet; ENDIF //[cite: 3]
-      RETURN SToD( cAno + cMes + cDia ) //[cite: 3]
+      IF cAno + cMes + cDia == "00000000"; RETURN dRet; ENDIF 
+      RETURN SToD( cAno + cMes + cDia ) 
    ELSE
       IF Len( cTemp ) == 8
          IF Val( Left( cTemp, 4 ) ) > 1900
-            dRet := SToD( cTemp ) //[cite: 3]
+            dRet := SToD( cTemp ) 
          ELSE
-            dRet := SToD( Right( cTemp, 4 ) + SubStr( cTemp, 3, 2 ) + Left( cTemp, 2 ) ) //[cite: 3]
+            dRet := SToD( Right( cTemp, 4 ) + SubStr( cTemp, 3, 2 ) + Left( cTemp, 2 ) ) 
          ENDIF
       ELSEIF Len( cTemp ) == 6
          nAno := Val( Right( cTemp, 2 ) )
-         cAno := iif( nAno < 50, "20" + Right( cTemp, 2 ), "19" + Right( cTemp, 2 ) ) //[cite: 3]
-         dRet := SToD( cAno + SubStr( cTemp, 3, 2 ) + Left( cTemp, 2 ) ) //[cite: 3]
+         cAno := iif( nAno < 50, "20" + Right( cTemp, 2 ), "19" + Right( cTemp, 2 ) ) 
+         dRet := SToD( cAno + SubStr( cTemp, 3, 2 ) + Left( cTemp, 2 ) ) 
       ELSE
-         dRet := CToD( xData ) //[cite: 3]
+         dRet := CToD( xData ) 
       ENDIF
    ENDIF
 RETURN dRet
