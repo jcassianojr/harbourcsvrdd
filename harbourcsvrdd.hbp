@@ -23,5 +23,6 @@ xhb.hbc
 
 FCSVRDD.prg
 f_freadl.prg
+fcsvclasse.prg
 
 $hb_pkg_install.hbm
