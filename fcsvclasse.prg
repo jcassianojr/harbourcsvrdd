@@ -25,6 +25,7 @@ CREATE CLASS CSVClass
    VAR lBof
    VAR dwMaxBytes       // Tamanho inicial do buffer (Padrao 1024)
    VAR aManualHeader    // Matriz de cabecalho injetada manualmente
+   VAR nBOMSize
 
    // Assinatura atualizada com todos os parametros do RDD
    METHOD New( cFileName, cDelimiter, lHeader, lRetornaTipado, lSplit, cLineDelimiter, aManualHeader, nReadSize )
@@ -76,6 +77,7 @@ METHOD New( cFileName, cDelimiter, lHeader, lRetornaTipado, lSplit, cLineDelimit
    ::cCurrentLine   := ""
    ::lEof           := .F.
    ::lBof           := .T.
+   ::nBOMSize       := 0
 RETURN Self
 
 // +--------------------------------------------------------------------
@@ -104,7 +106,8 @@ METHOD Open() CLASS CSVClass
       ::cDelim := ::DetectDelimiter()
    ENDIF
 
-   FSeek( ::nHandle, 0, FS_SET )
+  // FSeek( ::nHandle, 0, FS_SET )
+   FSeek( ::nHandle, ::nBOMSize, FS_SET )
 
    // 1. SE O CABEÇALHO FOI PASSADO MANUALMENTE VIA MATRIZ //[cite: 3]
    IF Len( ::aManualHeader ) > 0
@@ -143,7 +146,8 @@ METHOD Open() CLASS CSVClass
       NEXT
 
       IF !::lHasHeader
-         FSeek( ::nHandle, 0, FS_SET ) // Rebobina pois a primeira linha ja era dado
+         //FSeek( ::nHandle, 0, FS_SET ) // Rebobina pois a primeira linha ja era dado
+         FSeek( ::nHandle, ::nBOMSize, FS_SET )
       ENDIF
    ENDIF
 
@@ -198,6 +202,19 @@ METHOD DetectLineDelimiter() CLASS CSVClass
 
    IF nBytes > 0
       cHeader := Left( cHeader, nBytes )
+      
+      // 1. Lógica do FDELIM adaptada: Detecta e guarda o tamanho do BOM (apenas no início exato)
+      IF Left( cHeader, 3 ) == Chr( 239 ) + Chr( 187 ) + Chr( 191 ) // UTF-8
+         ::nBOMSize := 3
+      ELSEIF Left( cHeader, 2 ) == Chr( 255 ) + Chr( 254 ) // Unicode (UTF-16 LE)
+         ::nBOMSize := 2
+      ELSEIF Left( cHeader, 2 ) == Chr( 254 ) + Chr( 255 ) // Unicode (UTF-16 BE)
+         ::nBOMSize := 2
+      ELSE
+         ::nBOMSize := 0
+      ENDIF
+
+      // 2. Continua a busca pela quebra de linha real
       IF Chr(13) + Chr(10) $ cHeader
          cRet := Chr(13) + Chr(10) 
       ELSEIF Chr(10) $ cHeader
@@ -208,7 +225,9 @@ METHOD DetectLineDelimiter() CLASS CSVClass
          cRet := "@@" 
       ENDIF
    ENDIF
-   FSeek( ::nHandle, 0, FS_SET ) 
+   
+   // Retorna o ponteiro para logo APÓS o BOM, em vez do byte 0 absoluto
+   FSeek( ::nHandle, ::nBOMSize, FS_SET ) 
 RETURN cRet
 
 METHOD DetectDelimiter() CLASS CSVClass

@@ -165,20 +165,30 @@ FUNCTION FDELIM( cARQ, line_len, cPADRAO )
       RETURN cRETU
    ENDIF
 
-
+// os digitos iniciais indicam o arquivo como BOM porem utilizada delimitadores padrao
 // unicode
-   line_end := At( Chr( 255 ) + Chr( 254 ), buffer )
-   IF line_end > 0
-      cRETU := Chr( 255 ) + Chr( 254 )
-      RETURN cRETU
-   ENDIF
+//   line_end := At( Chr( 255 ) + Chr( 254 ), buffer )
+//   IF line_end > 0
+//      cRETU := Chr( 255 ) + Chr( 254 )
+//      RETURN cRETU
+ //  ENDIF
 
 // utf-8
-   line_end := At( Chr( 239 ) + Chr( 187 ) + Chr( 191 ), buffer )
-   IF line_end > 0
-      cRETU := Chr( 239 ) + Chr( 187 ) + Chr( 191 )
-      RETURN cRETU
-   ENDIF
+ //  line_end := At( Chr( 239 ) + Chr( 187 ) + Chr( 191 ), buffer )
+//   IF line_end > 0
+//      cRETU := Chr( 239 ) + Chr( 187 ) + Chr( 191 )
+//      RETURN cRETU
+ //  ENDIF
+ 
+//  IF Left( cHeader, 3 ) == Chr( 239 ) + Chr( 187 ) + Chr( 191 ) // UTF-8// 
+//          ::nBOMSize := 3
+//       ELSEIF Left( cHeader, 2 ) == Chr( 255 ) + Chr( 254 ) // Unicode (UTF-16 LE)
+ //         ::nBOMSize := 2
+//       ELSEIF Left( cHeader, 2 ) == Chr( 254 ) + Chr( 255 ) // Unicode (UTF-16 BE)
+ //         ::nBOMSize := 2
+//       ELSE
+ //         ::nBOMSize := 0
+ //      ENDIF
 
 // atribui o padrao
    IF Empty( cRETU ) .AND. ValType( cPADRAO ) = "C"

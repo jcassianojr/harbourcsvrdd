@@ -400,7 +400,8 @@ STATIC FUNCTION FCSV_INIT( nRDD )
    RETURN HB_SUCCESS
 
 STATIC FUNCTION FCSV_NEW( pWA )
-   LOCAL aWData := { F_ERROR, .F., .F., "", 0, "", {}, {} }
+   // Adicionado o 9º elemento (0) para guardar o tamanho do BOM
+   LOCAL aWData := { F_ERROR, .F., .F., "", 0, "", {}, {}, 0 } 
    USRRDD_AREADATA( pWA, aWData )
    RETURN HB_SUCCESS
 
@@ -417,6 +418,7 @@ STATIC FUNCTION FCSV_CREATE( nWA, aOpenInfo )
 STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
    LOCAL cName, nMode, nHandle, aWData, aField, oError, nResult, cDelimDetectado
    LOCAL cHeaderLine, aNames, aParsedDef, nI, cLine, cPrimeiraLinha
+   LOCAL nBOMSize := 0 // Nova variável
 
    IF aOpenInfo[ UR_OI_ALIAS ] == NIL
       hb_FNameSplit( aOpenInfo[ UR_OI_NAME ], , @cName )
@@ -443,10 +445,24 @@ STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
       RETURN HB_FAILURE
    ENDIF
 
-   // >>> DETECÇÃO AUTOMÁTICA INTELIGENTE <<<
+ // >>> DETECÇÃO AUTOMÁTICA INTELIGENTE <<<
    cPrimeiraLinha := Space( s_nReadSize )
    FRead( nHandle, @cPrimeiraLinha, s_nReadSize )
-   FSeek( nHandle, 0, FS_SET ) // Retorna o ponteiro
+
+   // NOVA LÓGICA DE DETECÇÃO DE BOM
+   IF Left( cPrimeiraLinha, 3 ) == Chr( 239 ) + Chr( 187 ) + Chr( 191 ) // UTF-8
+      nBOMSize := 3
+   ELSEIF Left( cPrimeiraLinha, 2 ) == Chr( 255 ) + Chr( 254 ) // UTF-16 LE
+      nBOMSize := 2
+   ELSEIF Left( cPrimeiraLinha, 2 ) == Chr( 254 ) + Chr( 255 ) // UTF-16 BE
+      nBOMSize := 2
+   ELSE
+      nBOMSize := 0
+   ENDIF
+   
+   FSeek( nHandle, nBOMSize, FS_SET )
+   
+   
 
    // Mod 2 e 3: Ajustar para Pipe ou Tab caso existam na 1ª linha
    IF "|" $ cPrimeiraLinha
@@ -472,6 +488,7 @@ STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
    aWData[ 6 ] := ""
    aWData[ 7 ] := {}
    aWData[ 8 ] := {}
+   aWData[ 9 ] := nBOMSize // Salva o tamanho do BOM para a navegação do RDD
 
    // 1. SE O CABEÇALHO FOI PASSADO MANUALMENTE VIA MATRIZ
    IF Len( s_aManualHeader ) > 0
@@ -562,7 +579,7 @@ STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
             AAdd( aWData[ 8 ], { "CAMPO1", "C", 0, 0 } )
             AAdd( aWData[ 7 ], "CAMPO1" )
          ENDIF
-         FSeek( nHandle, 0, FS_SET )
+         FSeek( nHandle, aWData[ 9 ], FS_SET ) // Substitui o zero pela variável do BOM
          IF s_lUseHeader
             FREADLINE( nHandle, s_nReadSize, .T., cDelimDetectado )
          ENDIF
@@ -672,7 +689,7 @@ STATIC FUNCTION FCSV_GETVALUE( nWA, nField, xValue )
 STATIC FUNCTION FCSV_GOTOP( nWA )
    LOCAL aWData := USRRDD_AREADATA( nWA )
    
-   FSeek( aWData[ 1 ], 0, FS_SET )
+   FSeek( aWData[ 1 ], aWData[ 9 ], FS_SET ) // Retorna para o Início dos Dados, não para o zero
    
    IF Len( s_aManualHeader ) == 0
       IF s_lUseHeader
@@ -776,7 +793,7 @@ STATIC FUNCTION FCSV_RECCOUNT( nWA, nRecords )
    nPosAnt := FSeek( nHandle, 0, FS_RELATIVE )
    nLines := 0
 
-   FSeek( nHandle, 0, FS_SET )
+   FSeek( nHandle, aWData[ 9 ], FS_SET ) // Inicia a contagem pulando o BOM
    IF Len( s_aManualHeader ) == 0
       IF s_lUseHeader
          FREADLINE( nHandle, s_nReadSize, .T., aWData[ 4 ] )
