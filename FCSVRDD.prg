@@ -430,7 +430,7 @@ STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
 
    nHandle := FOpen( aOpenInfo[ UR_OI_NAME ], nMode )
    IF nHandle == F_ERROR
-      GravarLogFCSVRDD( "Erro ao abrir arquivo. OS Code: " + AllTrim( Str( FError() ) ), aOpenInfo[ UR_OI_NAME ] )
+      //GravarLogFCSVRDD( "Erro ao abrir arquivo. OS Code: " + AllTrim( Str( FError() ) ), aOpenInfo[ UR_OI_NAME ] )
       
       oError := ErrorNew()
       oError:GenCode     := EG_OPEN
