@@ -1,3 +1,30 @@
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Programa  : f_freadl.prg
+*+
+*+
+*+
+*+     Sistema:
+*+
+*+     Linguagem: Harbour
+*+
+*+     Autor: jcassiano
+*+
+*+     Copyright (c) 2024,  jcassiano
+*+
+*+     
+*+
+*+
+*+
+*+    Documentado em 13-Out-2026 as  6:37 pm
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+
 // +--------------------------------------------------------------------
 // +
 // +
@@ -67,52 +94,53 @@
 // +
 // +
 // +
-FUNCTION FREADLINE( handle, line_len, lremchrexp, cDELI )
+FUNCTION FREADLINE(handle,line_len,lremchrexp,cDELI)
 
-   LOCAL buffer, line_end, num_bytes,cRETU
+
+LOCAL buffer,line_end,num_bytes,cRETU
 
 // Se o tamanho da linha nao for informado, usa o predefinido MAXLINE
-   IF ValType( line_len ) <> 'N'
-      line_len := 1024
-   ENDIF
-   IF ValType( lremchrexp ) <> "L"
-      lREMCHREXP := .T.
-   ENDIF
-   IF ValType( cDELI ) <> "C"
-      cDELI := Chr( 13 ) + Chr( 10 )
-   ENDIF
-   cRETU:=""
+IF ValType(line_len) <> 'N'
+   line_len := 1024
+ENDIF
+IF ValType(lremchrexp) <> "L"
+   lREMCHREXP := .T.
+ENDIF
+IF ValType(cDELI) <> "C"
+   cDELI := Chr(13)+Chr(10)
+ENDIF
+cRETU := ""
 // Define um buffer temporario p/ guardar o tamanho de linha  especificado
-   buffer := Space( line_len )
+buffer := Space(line_len)
 // Carrega o texto da posicao atual ate' o tamanho de linha especificado
-   num_bytes := FRead( handle, @buffer, line_len )
+num_bytes := FRead(handle,@buffer,line_len)
 // Localiza a combinacao de retorno de carro/avanco de linha.
-   line_end := At( cDELI, buffer )
-   IF line_end = 0
-      // Nao ha' retorno carro/avanco linha. Ponteiro esta' no final do
-      // arq. ou linha e' grande demais. Volta ponteiro p/ inicio do arq.
-      FSeek( handle, 0 )
-      RETURN ( '__FINAL__' )
+line_end := At (cDELI,buffer)
+IF line_end = 0
+   // Nao ha' retorno carro/avanco linha. Ponteiro esta' no final do
+   // arq. ou linha e' grande demais. Volta ponteiro p/ inicio do arq.
+   FSeek(handle,0)
+   RETURN ('__FINAL__')
+ELSE
+   // Move o ponteiro para o inicio da proxima linha.
+   IF cDELI = Chr(10)   // *-1 negativo pois o buffer passa do ponto e precisa retornar ao final real da linha
+      FSeek(handle,(num_bytes * - 1)+line_end,1)  // chr(10) e so um caractere nao  precisa somar +1
    ELSE
-      // Move o ponteiro para o inicio da proxima linha.
-      IF cDELI = Chr( 10 )   // *-1 negativo pois o buffer passa do ponto e precisa retornar ao final real da linha
-         FSeek( handle, ( num_bytes * -1 ) + line_end, 1 )  // chr(10) e so um caractere nao  precisa somar +1
-      ELSE
-         FSeek( handle, ( num_bytes * -1 ) + line_end + 1, 1 )  // como chr(13)+chr(10) sao dois caracteres precisa somar +1
-      ENDIF
-      // E retorna a linha atual.
-      IF lREMCHREXP //nao usar fixstrextend as funcoes que leem a informacao ira tratar
-         cRETU := SubStr( buffer, 1, line_end - 1 )
-         cRETU := RANGEREPL( Chr( 0 ), Chr( 9 ), cRETU, " " )   // CHR(13)+CHR(10)
-         cRETU := RANGEREPL( Chr( 11 ), Chr( 12 ), cRETU, " " )   // Line Feed Manter
-         cRETU := RANGEREPL( Chr( 14 ), Chr( 31 ), cRETU, " " )   // 32 space
-         cRETU := RANGEREPL( Chr( 127 ), Chr( 255 ), cRETU, " " )
-         RETURN cRETU
-      ELSE
-         RETURN ( SubStr( buffer, 1, line_end - 1 ) )
-      ENDIF
+      FSeek(handle,(num_bytes * - 1)+line_end+1,1)  // como chr(13)+chr(10) sao dois caracteres precisa somar +1
    ENDIF
-   RETURN cRETU
+   // E retorna a linha atual.
+   IF lREMCHREXP  //nao usar fixstrextend as funcoes que leem a informacao ira tratar
+      cRETU := SubStr(buffer,1,line_end - 1)
+      cRETU := RANGEREPL(Chr(0),Chr(9),cRETU," ")   // CHR(13)+CHR(10)
+      cRETU := RANGEREPL(Chr(11),Chr(12),cRETU," ")   // Line Feed Manter
+      cRETU := RANGEREPL(Chr(14),Chr(31),cRETU," ")   // 32 space
+      cRETU := RANGEREPL(Chr(127),Chr(255),cRETU," ")
+      RETURN cRETU
+   ELSE
+      RETURN (SubStr(buffer,1,line_end - 1))
+   ENDIF
+ENDIF
+RETURN cRETU
 
 
 // +--------------------------------------------------------------------
@@ -128,42 +156,43 @@ FUNCTION FREADLINE( handle, line_len, lremchrexp, cDELI )
 // +
 // +
 
-FUNCTION FDELIM( cARQ, line_len, cPADRAO )
+FUNCTION FDELIM(cARQ,line_len,cPADRAO)
 
-   LOCAL buffer, line_end, num_bytes, nhandle, cRETU
 
-   IF ValType( line_len ) <> 'N'
-      line_len := 1024
-   ENDIF
-   cRETU     := ""
-   buffer    := Space( line_len )
-   nHANDLE   := FOpen( cARQ )
-   num_bytes := FRead( nhandle, @buffer, line_len )
-   IF Empty( AllTrim( BUFFER ) )   // tenta com freadstr se o buffer vier vazio
-      buffer := FReadStr( nhandle, line_len )
-   ENDIF
-   FClose( NHANDLE )
+LOCAL buffer,line_end,num_bytes,nhandle,cRETU
+
+IF ValType(line_len) <> 'N'
+   line_len := 1024
+ENDIF
+cRETU     := ""
+buffer    := Space(line_len)
+nHANDLE   := FOpen(cARQ)
+num_bytes := FRead(nhandle,@buffer,line_len)
+IF Empty(AllTrim(BUFFER))   // tenta com freadstr se o buffer vier vazio
+   buffer := FReadStr(nhandle,line_len)
+ENDIF
+FClose(NHANDLE)
 
 // Dos
-   line_end := At( Chr( 13 ) + Chr( 10 ), buffer )  // 0D0A
-   IF line_end > 0
-      cRETU := Chr( 13 ) + Chr( 10 )
-      RETURN cRETU
-   ENDIF
+line_end := At (Chr(13)+Chr(10),buffer)   // 0D0A
+IF line_end > 0
+   cRETU := Chr(13)+Chr(10)
+   RETURN cRETU
+ENDIF
 
 // Linux
-   line_end := At( Chr( 10 ), buffer )  // 0A
-   IF line_end > 0
-      cRETU := Chr( 10 )
-      RETURN cRETU
-   ENDIF
+line_end := At (Chr(10),buffer)   // 0A
+IF line_end > 0
+   cRETU := Chr(10)
+   RETURN cRETU
+ENDIF
 
 // So 13 0D
-   line_end := At( Chr( 13 ), buffer )  // 0D
-   IF line_end > 0
-      cRETU := Chr( 13 )
-      RETURN cRETU
-   ENDIF
+line_end := At (Chr(13),buffer)   // 0D
+IF line_end > 0
+   cRETU := Chr(13)
+   RETURN cRETU
+ENDIF
 
 // os digitos iniciais indicam o arquivo como BOM porem utilizada delimitadores padrao
 // unicode
@@ -171,31 +200,31 @@ FUNCTION FDELIM( cARQ, line_len, cPADRAO )
 //   IF line_end > 0
 //      cRETU := Chr( 255 ) + Chr( 254 )
 //      RETURN cRETU
- //  ENDIF
+//  ENDIF
 
 // utf-8
- //  line_end := At( Chr( 239 ) + Chr( 187 ) + Chr( 191 ), buffer )
+//  line_end := At( Chr( 239 ) + Chr( 187 ) + Chr( 191 ), buffer )
 //   IF line_end > 0
 //      cRETU := Chr( 239 ) + Chr( 187 ) + Chr( 191 )
 //      RETURN cRETU
- //  ENDIF
- 
-//  IF Left( cHeader, 3 ) == Chr( 239 ) + Chr( 187 ) + Chr( 191 ) // UTF-8// 
+//  ENDIF
+
+//  IF Left( cHeader, 3 ) == Chr( 239 ) + Chr( 187 ) + Chr( 191 ) // UTF-8//
 //          ::nBOMSize := 3
 //       ELSEIF Left( cHeader, 2 ) == Chr( 255 ) + Chr( 254 ) // Unicode (UTF-16 LE)
- //         ::nBOMSize := 2
+//         ::nBOMSize := 2
 //       ELSEIF Left( cHeader, 2 ) == Chr( 254 ) + Chr( 255 ) // Unicode (UTF-16 BE)
- //         ::nBOMSize := 2
+//         ::nBOMSize := 2
 //       ELSE
- //         ::nBOMSize := 0
- //      ENDIF
+//         ::nBOMSize := 0
+//      ENDIF
 
 // atribui o padrao
-   IF Empty( cRETU ) .AND. ValType( cPADRAO ) = "C"
-      cRETU := cPADRAO
-   ENDIF
+IF Empty(cRETU) .AND. ValType(cPADRAO) = "C"
+   cRETU := cPADRAO
+ENDIF
 
-   RETURN cRETU
+RETURN cRETU
 
 
 
@@ -212,34 +241,38 @@ FUNCTION FDELIM( cARQ, line_len, cPADRAO )
 // +
 // +
 // +
-FUNCTION SplitCommaAspas( cLINHA, cSEPCAMPOS )
+FUNCTION SplitCommaAspas(cLINHA,cSEPCAMPOS)
 
-   LOCAL aRETU, cVALOR, nPOS
+
+LOCAL aRETU,cVALOR,nPOS
 
 // CLINHA:='"33600823";"0001";"07";"1";"SALGADOS DA ERIDIANA";"08";"20190722";"01";"";"";"20190513";"5620104";"1096100,1093702";"RUA";"EMILIO VASCONCELOS";"288";"";"CENTRO";"39790000";"MG";"4011";"33";"88333829";"";"";"";"";"adelano.deptofiscal@gmail.com";"";"'
-   IF ValType( cSEPCAMPOS ) <> "C"
-      cSEPCAMPOS := '";"'
+IF ValType(cSEPCAMPOS) <> "C"
+   cSEPCAMPOS := '";"'
+ELSE
+   cSEPCAMPOS := '"'+cSEPCAMPOS+'"'
+ENDIF
+aRETU := {}
+WHILE At (cSEPCAMPOS,cLINHA) > 0  // '";"'
+   nPOS := At (cSEPCAMPOS,cLINHA)   // '";"'
+   IF Left(cLINHA,1) = '"'  // as vezes o primeiro campo nao e "33600823"; e sim 33600823";
+      cVALOR := SubStr(cLINHA,2,nPOS - 2)
    ELSE
-      cSEPCAMPOS := '"' + cSEPCAMPOS + '"'
+      cVALOR := SubStr(cLINHA,1,nPOS - 1)
    ENDIF
-   aRETU := {}
-   WHILE At( cSEPCAMPOS, cLINHA ) > 0   // '";"'
-      nPOS := At( cSEPCAMPOS, cLINHA )  // '";"'
-      IF Left( cLINHA, 1 ) = '"'  // as vezes o primeiro campo nao e "33600823"; e sim 33600823";
-         cVALOR := SubStr( cLINHA, 2, nPOS - 2 )
-      ELSE
-         cVALOR := SubStr( cLINHA, 1, nPOS - 1 )
-      ENDIF
-      cLINHA := SubStr( cLINHA, nPOS + 2 )
-      // ALERT(cVALOR)
-      // ALERT(cLINHA)
-      AAdd( aRETU, cVALOR )
-   ENDDO
-   IF Len( cLINHA ) > 0  // caso o ultimo campo nao tenha delimitador
-      AAdd( aRETU, StrTran( cLINHA, '"', '' ) )
-   ENDIF
+   cLINHA := SubStr(cLINHA,nPOS+2)
+   // ALERT(cVALOR)
+   // ALERT(cLINHA)
+   AAdd(aRETU,cVALOR)
+ENDDO
+IF Len(cLINHA) > 0  // caso o ultimo campo nao tenha delimitador
+   AAdd(aRETU,StrTran(cLINHA,'"',''))
+ENDIF
 
-   RETURN aRETU
+RETURN aRETU
 
 // + EOF: f_freadl.prg
 // +
+
+*+ EOF: f_freadl.prg
+*+

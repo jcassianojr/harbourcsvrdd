@@ -1,3 +1,30 @@
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Programa  : FCSVRDD.prg
+*+
+*+
+*+
+*+     Sistema:
+*+
+*+     Linguagem: Harbour
+*+
+*+     Autor: jcassiano
+*+
+*+     Copyright (c) 2024,  jcassiano
+*+
+*+     
+*+
+*+
+*+
+*+    Documentado em 13-Out-2026 as  6:37 pm
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+
 /*
  * FCSVRDD RDD - Completo, Otimizado e Seguro para Arquivos CSV Grandes
  * Inclui: Tipagem Dinâmica, Split Robusto, Detecção Automática (Pipe/Tab/Tipado)
@@ -18,945 +45,1479 @@ STATIC s_cFieldDelim    := ";"
 STATIC s_lUseHeader     := .F.
 STATIC s_lUseRecCount   := .F.
 STATIC s_lUseTypedCSV   := .F.  // o motor rdd trabalha tipado mais em csv e melhor usar carater e so o retono tipado com o parametro s_lRetornaTipado
-STATIC s_lRetornaTipado := .F. // Mod 1: Parâmetro para retornar dados já convertidos (Tipados)
-STATIC s_aManualHeader  := {}  // Armazena a matriz de cabeçalho/tipagem passada manualmente
+STATIC s_lRetornaTipado := .F.  // Mod 1: Parâmetro para retornar dados já convertidos (Tipados)
+STATIC s_aManualHeader  := {}   // Armazena a matriz de cabeçalho/tipagem passada manualmente
 
 // +--------------------------------------------------------------------
 // + Funções de Configuração Global
 // +--------------------------------------------------------------------
 
-FUNCTION FCSV_TAMANHOLEITURA( nSize )
-   IF ValType( nSize ) == "N"
-      s_nReadSize := nSize
-   ENDIF
-   RETURN s_nReadSize
 
-FUNCTION FCSV_USARSPLIT( lUse )
-   IF ValType( lUse ) == "L"
-      s_lUseSplit := lUse
-   ENDIF
-   RETURN s_lUseSplit
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_TAMANHOLEITURA()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+FUNCTION FCSV_TAMANHOLEITURA(nSize)
 
-FUNCTION FCSV_SETDELIM( cDelim )
-   IF ValType( cDelim ) == "C"
-      s_cFieldDelim := cDelim
-   ENDIF
-   RETURN s_cFieldDelim
+IF ValType(nSize) == "N"
+   s_nReadSize := nSize
+ENDIF
+RETURN s_nReadSize
 
-FUNCTION FCSV_USARHEADER( lUse )
-   IF ValType( lUse ) == "L"
-      s_lUseHeader := lUse
-   ENDIF
-   RETURN s_lUseHeader
 
-FUNCTION FCSV_USARRECCOUNT( lUse )
-   IF ValType( lUse ) == "L"
-      s_lUseRecCount := lUse
-   ENDIF
-   RETURN s_lUseRecCount
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_USARSPLIT()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+FUNCTION FCSV_USARSPLIT(lUse)
 
-FUNCTION FCSV_USARTIPAGEM( lUse )
-   IF ValType( lUse ) == "L"
-      s_lUseTypedCSV := lUse
-   ENDIF
-   RETURN s_lUseTypedCSV
+IF ValType(lUse) == "L"
+   s_lUseSplit := lUse
+ENDIF
+RETURN s_lUseSplit
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_SETDELIM()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+FUNCTION FCSV_SETDELIM(cDelim)
+
+IF ValType(cDelim) == "C"
+   s_cFieldDelim := cDelim
+ENDIF
+RETURN s_cFieldDelim
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_USARHEADER()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+FUNCTION FCSV_USARHEADER(lUse)
+
+IF ValType(lUse) == "L"
+   s_lUseHeader := lUse
+ENDIF
+RETURN s_lUseHeader
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_USARRECCOUNT()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+FUNCTION FCSV_USARRECCOUNT(lUse)
+
+IF ValType(lUse) == "L"
+   s_lUseRecCount := lUse
+ENDIF
+RETURN s_lUseRecCount
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_USARTIPAGEM()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+FUNCTION FCSV_USARTIPAGEM(lUse)
+
+IF ValType(lUse) == "L"
+   s_lUseTypedCSV := lUse
+ENDIF
+RETURN s_lUseTypedCSV
 
 // Função para ativar/desativar a conversão dos dados no GetValue (Mod 1)
-FUNCTION FCSV_RETORNATIPADO( lUse )
-   IF ValType( lUse ) == "L"
-      s_lRetornaTipado := lUse
-   ENDIF
-   RETURN s_lRetornaTipado
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_RETORNATIPADO()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+FUNCTION FCSV_RETORNATIPADO(lUse)
+
+IF ValType(lUse) == "L"
+   s_lRetornaTipado := lUse
+ENDIF
+RETURN s_lRetornaTipado
 
 // Permite injetar o cabeçalho/estrutura manualmente via matriz (Array)
-FUNCTION FCSV_SETCABECALHO( aCabec )
-   IF ValType( aCabec ) == "A"
-      s_aManualHeader := aCabec
-      s_lUseHeader    := .T.
-      IF Len( aCabec ) > 0 .AND. At( ",", aCabec[1] ) > 0
-         s_lUseTypedCSV := .T.
-      ENDIF
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_SETCABECALHO()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+FUNCTION FCSV_SETCABECALHO(aCabec)
+
+IF ValType(aCabec) == "A"
+   s_aManualHeader := aCabec
+   s_lUseHeader    := .T.
+   IF Len(aCabec) > 0 .AND. At (",",aCabec[1]) > 0
+      s_lUseTypedCSV := .T.
    ENDIF
-   RETURN s_aManualHeader
+ENDIF
+RETURN s_aManualHeader
 
 // +--------------------------------------------------------------------
 // + Retorna a linha inteira crua da Work Area ativa sem alterar colunas
 // +--------------------------------------------------------------------
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_GETLINE()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
 FUNCTION FCSV_GETLINE()
-   LOCAL aWData, cLine := ""
-   
-   aWData := USRRDD_AREADATA( Select() )
-   IF ValType( aWData ) == "A" .AND. Len( aWData ) >= 6
-      cLine := aWData[ 6 ] 
-   ENDIF
-   
-   RETURN cLine
+
+LOCAL aWData,cLine := ""
+
+aWData := USRRDD_AREADATA(Select())
+IF ValType(aWData) == "A" .AND. Len(aWData) >= 6
+   cLine := aWData[6]
+ENDIF
+
+RETURN cLine
 
 // +--------------------------------------------------------------------
 // + Retorna um Array com os valores dos campos da linha atual com segurança
 // +--------------------------------------------------------------------
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_GETROW()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
 FUNCTION FCSV_GETROW()
-   LOCAL aWData, cLine := "", aRow := {}
-   
-   aWData := USRRDD_AREADATA( Select() )
-   IF ValType( aWData ) == "A" .AND. Len( aWData ) >= 6
-      cLine := aWData[ 6 ]
+
+LOCAL aWData,cLine := "",aRow := {}
+
+aWData := USRRDD_AREADATA(Select())
+IF ValType(aWData) == "A" .AND. Len(aWData) >= 6
+   cLine := aWData[6]
+ENDIF
+
+IF !Empty(cLine)
+   IF Empty(s_cFieldDelim)
+      aRow := {cLine}
+   ELSEIF s_lUseSplit
+      aRow := SplitAspasRDD(cLine,s_cFieldDelim)
+   ELSE
+      aRow := hb_ATokens(cLine,s_cFieldDelim)
    ENDIF
-   
-   IF !Empty( cLine )
-      IF Empty( s_cFieldDelim )
-         aRow := { cLine }
-      ELSEIF s_lUseSplit
-         aRow := SplitAspasRDD( cLine, s_cFieldDelim )
-      ELSE
-         aRow := hb_ATokens( cLine, s_cFieldDelim )
-      ENDIF
-   ENDIF
-   
-   RETURN aRow
+ENDIF
+
+RETURN aRow
 
 // +--------------------------------------------------------------------
 // + Retorna o Array Auxiliar com a estrutura original tipada do CSV
 // +--------------------------------------------------------------------
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSV_GETSTRUCTORIGINAL()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
 FUNCTION FCSV_GETSTRUCTORIGINAL()
-   LOCAL aWData, aStruct := {}
-   
-   aWData := USRRDD_AREADATA( Select() )
-   IF ValType( aWData ) == "A" .AND. Len( aWData ) >= 8
-      aStruct := aWData[ 8 ]
-   ENDIF
-   
-   RETURN aStruct
+
+LOCAL aWData,aStruct := {}
+
+aWData := USRRDD_AREADATA(Select())
+IF ValType(aWData) == "A" .AND. Len(aWData) >= 8
+   aStruct := aWData[8]
+ENDIF
+
+RETURN aStruct
 
 // +--------------------------------------------------------------------
 // + Split Robusto (Trata mistas com/sem aspas, aspas internas e casos atípicos)
 // +--------------------------------------------------------------------
-FUNCTION SplitAspasRDD( cLINHA, cSEPCAMPOS )
-   LOCAL aRETU := {}, cVALOR := "", lInQuotes := .F., nI := 1, nLen, cChar
-   LOCAL lFirstField := .T.
-   
-   IF ValType( cSEPCAMPOS ) <> "C" .OR. Empty( cSEPCAMPOS )
-      RETURN { cLINHA }
-   ENDIF
-   
-   nLen := Len( cLINHA )
-   WHILE nI <= nLen
-      cChar := SubStr( cLINHA, nI, 1 )
-      
-      IF cChar == '"'
-         IF lFirstField .AND. Len( cVALOR ) > 0 .AND. !lInQuotes
-            cVALOR += cChar
-         ELSE
-            IF lInQuotes .AND. nI < nLen .AND. SubStr( cLINHA, nI + 1, 1 ) == '"'
-               cVALOR += '"'
-               nI++
-            ELSE
-               lInQuotes := !lInQuotes
-            ENDIF
-         ENDIF
-      ELSEIF cChar == cSEPCAMPOS .AND. !lInQuotes
-         cVALOR := AllTrim( cVALOR )
-         IF Left( cVALOR, 1 ) == '"' .AND. Right( cVALOR, 1 ) == '"' .AND. Len( cVALOR ) >= 2
-            cVALOR := SubStr( cVALOR, 2, Len( cVALOR ) - 2 )
-         ELSEIF Left( cVALOR, 1 ) == '"'
-            cVALOR := SubStr( cVALOR, 2 )
-         ENDIF
-         AAdd( aRETU, cVALOR )
-         cVALOR := ""
-         lFirstField := .F.
-      ELSE
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function SplitAspasRDD()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+FUNCTION SplitAspasRDD(cLINHA,cSEPCAMPOS)
+
+LOCAL aRETU       := {},cVALOR := "",lInQuotes := .F.,nI := 1,nLen,cChar
+LOCAL lFirstField := .T.
+
+IF ValType(cSEPCAMPOS) <> "C" .OR. Empty(cSEPCAMPOS)
+   RETURN {cLINHA}
+ENDIF
+
+nLen := Len(cLINHA)
+WHILE nI <= nLen
+   cChar := SubStr(cLINHA,nI,1)
+
+   IF cChar == '"'
+      IF lFirstField .AND. Len(cVALOR) > 0 .AND. !lInQuotes
          cVALOR += cChar
+      ELSE
+         IF lInQuotes .AND. nI < nLen .AND. SubStr(cLINHA,nI+1,1) == '"'
+            cVALOR += '"'
+            nI ++
+         ELSE
+            lInQuotes := !lInQuotes
+         ENDIF
       ENDIF
-      nI++
-   ENDDO
-   
-   IF Len( cVALOR ) > 0
-      cVALOR := AllTrim( cVALOR )
-      IF Left( cVALOR, 1 ) == '"' .AND. Right( cVALOR, 1 ) == '"' .AND. Len( cVALOR ) >= 2
-         cVALOR := SubStr( cVALOR, 2, Len( cVALOR ) - 2 )
-      ELSEIF Left( cVALOR, 1 ) == '"'
-         cVALOR := SubStr( cVALOR, 2 )
+   ELSEIF cChar == cSEPCAMPOS .AND. !lInQuotes
+      cVALOR := AllTrim(cVALOR)
+      IF Left(cVALOR,1) == '"' .AND. Right(cVALOR,1) == '"' .AND. Len(cVALOR) >= 2
+         cVALOR := SubStr(cVALOR,2,Len(cVALOR) - 2)
+      ELSEIF Left(cVALOR,1) == '"'
+         cVALOR := SubStr(cVALOR,2)
       ENDIF
-      cVALOR := StrTran( cVALOR, '"', '' )
-      AAdd( aRETU, cVALOR )
+      AAdd(aRETU,cVALOR)
+      cVALOR      := ""
+      lFirstField := .F.
+   ELSE
+      cVALOR += cChar
    ENDIF
-   
-   RETURN aRETU
+   nI ++
+ENDDO
+
+IF Len(cVALOR) > 0
+   cVALOR := AllTrim(cVALOR)
+   IF Left(cVALOR,1) == '"' .AND. Right(cVALOR,1) == '"' .AND. Len(cVALOR) >= 2
+      cVALOR := SubStr(cVALOR,2,Len(cVALOR) - 2)
+   ELSEIF Left(cVALOR,1) == '"'
+      cVALOR := SubStr(cVALOR,2)
+   ENDIF
+   cVALOR := StrTran(cVALOR,'"','')
+   AAdd(aRETU,cVALOR)
+ENDIF
+
+RETURN aRETU
 
 // +--------------------------------------------------------------------
 // + Parser Inteligente para Tipagem do CSV
 // +--------------------------------------------------------------------
-STATIC FUNCTION ParseFieldDefinition( cDef )
-   LOCAL aParts, cName := "", cType := "C", nLen := 0, nDec := 0, cSec
-   
-   cDef := AllTrim( StrTran( cDef, '"', '' ) )
-   aParts := hb_ATokens( cDef, "," )
-   
-   IF Len( aParts ) > 0
-      cName := AllTrim( aParts[ 1 ] )
-   ENDIF
-   
-   IF Len( aParts ) > 1
-      cSec := Upper( AllTrim( aParts[ 2 ] ) )
-      IF cSec $ "N,C,D,L,M"
-         cType := cSec
-         IF Len( aParts ) > 2
-            nLen := Val( aParts[ 3 ] )
-         ENDIF
-         IF Len( aParts ) > 3
-            nDec := Val( aParts[ 4 ] )
-         ENDIF
-      ELSE
-         cType := "N"
-         nLen  := Val( cSec )
-         IF Len( aParts ) > 2
-            nDec := Val( aParts[ 3 ] )
-         ENDIF
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function ParseFieldDefinition()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION ParseFieldDefinition(cDef)
+
+LOCAL aParts,cName := "",cType := "C",nLen := 0,nDec := 0,cSec
+
+cDef   := AllTrim(StrTran(cDef,'"',''))
+aParts := hb_ATokens(cDef,",")
+
+IF Len(aParts) > 0
+   cName := AllTrim(aParts[1])
+ENDIF
+
+IF Len(aParts) > 1
+   cSec := Upper(AllTrim(aParts[2]))
+   IF cSec $ "N,C,D,L,M"
+      cType := cSec
+      IF Len(aParts) > 2
+         nLen := Val(aParts[3])
+      ENDIF
+      IF Len(aParts) > 3
+         nDec := Val(aParts[4])
+      ENDIF
+   ELSE
+      cType := "N"
+      nLen  := Val(cSec)
+      IF Len(aParts) > 2
+         nDec := Val(aParts[3])
       ENDIF
    ENDIF
-   
-   IF cType == "D" .AND. nLen == 0; nLen := 8; ENDIF
-   IF cType == "L" .AND. nLen == 0; nLen := 1; ENDIF
-   IF cType == "M" .AND. nLen == 0; nLen := 4; ENDIF
-   
-   RETURN { cName, cType, nLen, nDec }
+ENDIF
+
+IF cType == "D" .AND. nLen == 0 
+   nLen := 8
+ENDIF
+IF cType == "L" .AND. nLen == 0 
+   nLen := 1
+ENDIF
+IF cType == "M" .AND. nLen == 0 
+   nLen := 4
+ENDIF
+
+RETURN {cName,cType,nLen,nDec}
 
 // +--------------------------------------------------------------------
 // + Conversão Lógica Robusta (Mod 5)
 // +--------------------------------------------------------------------
-STATIC FUNCTION StrLogicrdd( cVAL, lDEFAULT )
-   IF ValType( lDEFAULT ) <> "L"
-      lDEFAULT := .F.
-   ENDIF
-   cVal := AllTrim( cVal )
-   
-   SWITCH Upper( cVal )
-   CASE ".T."
-   CASE "TRUE"
-   CASE "YES"
-   CASE "SIM"
-   CASE "ON"
-   CASE "Y"
-   CASE "1"
-   CASE "T"
-   CASE "S"
-      RETURN .T.
-   CASE ".F."
-   CASE "FALSE"
-   CASE "NO"
-   CASE "NAO"
-   CASE "OFF"
-   CASE "N"
-   CASE "0"
-   CASE "F"
-   CASE "<NULL>"
-   CASE "NULL"
-   CASE "NUL"
-   CASE "NIL"
-      RETURN .F.
-   ENDSWITCH
 
-   RETURN lDEFAULT
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function StrLogicrdd()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION StrLogicrdd(cVAL,lDEFAULT)
+
+IF ValType(lDEFAULT) <> "L"
+   lDEFAULT := .F.
+ENDIF
+cVal := AllTrim(cVal)
+
+SWITCH Upper(cVal)
+CASE ".T."
+CASE "TRUE"
+CASE "YES"
+CASE "SIM"
+CASE "ON"
+CASE "Y"
+CASE "1"
+CASE "T"
+CASE "S"
+RETURN .T.
+CASE ".F."
+CASE "FALSE"
+CASE "NO"
+CASE "NAO"
+CASE "OFF"
+CASE "N"
+CASE "0"
+CASE "F"
+CASE "<NULL>"
+CASE "NULL"
+CASE "NUL"
+CASE "NIL"
+RETURN .F.
+ENDSWITCH
+
+RETURN lDEFAULT
 
 
 // +--------------------------------------------------------------------
 // +    Static Function StrDateRdd( xData )
 // +    Conversor inteligente de datas universal para o RDD ADO
 // +--------------------------------------------------------------------
-STATIC FUNCTION StrDateRdd( xData )
-LOCAL dRet := CToD( "" )
-   LOCAL cTemp, aParts 
-   LOCAL i, nMes, cMes, cAno, cDia, nDia, nAno, cMesStr
-   LOCAL cCleanData
-   
-   // Matrizes independentes pela clareza e velocidade nativa do AScan
-   LOCAL aMonthsEN := { "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC" }
-   LOCAL aMonthsPT := { "JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ" }
+STATIC FUNCTION StrDateRdd(xData)
 
-   IF ValType( xData ) == "D"
-      RETURN xData
-   ENDIF
+LOCAL dRet       := CToD("")
+LOCAL cTemp,aParts
+LOCAL i,nMes,cMes,cAno,cDia,nDia,nAno,cMesStr
+LOCAL cCleanData
 
-   IF ValType( xData ) <> "C" .OR. Empty( xData )
-      RETURN dRet
-   ENDIF
-   
-   // Limpa uma única vez para otimizar os testes
-   cCleanData := Upper( AllTrim( xData ) )
+// Matrizes independentes pela clareza e velocidade nativa do AScan
+LOCAL aMonthsEN := {"JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"}
+LOCAL aMonthsPT := {"JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"}
 
-   // Barreira imediata contra literais nulos/vazios
-   IF cCleanData == "NULL" .OR. cCleanData == "NIL" .OR. cCleanData == "<NULL>" .OR. cCleanData == "NUL" .OR. cCleanData == "/  /" .OR. cCleanData == "-  -"
-      RETURN dRet
-   ENDIF
+IF ValType(xData) == "D"
+   RETURN xData
+ENDIF
 
-   cTemp := AllTrim( xData )
+IF ValType(xData) <> "C" .OR. Empty(xData)
+   RETURN dRet
+ENDIF
 
-   // -------------------------------------------------------------------------
-   // Suporte a Formatos HTTP-date e Logs (Inglês e Português)
-   // -------------------------------------------------------------------------
-   cTemp := StrTran( cTemp, ",", " " )
-   cTemp := StrTran( cTemp, "-", " " )
+// Limpa uma única vez para otimizar os testes
+cCleanData := Upper(AllTrim(xData))
 
-   DO WHILE "  " $ cTemp
-      cTemp := StrTran( cTemp, "  ", " " )
-   ENDDO
+// Barreira imediata contra literais nulos/vazios
+IF cCleanData == "NULL" .OR. cCleanData == "NIL" .OR. cCleanData == "<NULL>" .OR. cCleanData == "NUL" .OR. cCleanData == "/  /" .OR. cCleanData == "-  -"
+   RETURN dRet
+ENDIF
 
-   aParts := hb_ATokens( AllTrim( cTemp ), " " )
+cTemp := AllTrim(xData)
 
-   IF Len( aParts ) >= 4
-      FOR i := 1 TO Len( aParts )
-         cMesStr := Upper( Left( aParts[ i ], 3 ) )
-         
-         // 1. Busca primeiro em Inglês
-         nMes := AScan( aMonthsEN, cMesStr )
-         
-         // 2. Se não encontrar, tenta em Português
-         IF nMes == 0
-            nMes := AScan( aMonthsPT, cMesStr )
-         ENDIF
-         
-         // Se encontrou o mês, processa
-         IF nMes > 0
-            cMes := StrZero( nMes, 2 )
-            
-            // Extrai o Dia e o Ano baseado na posição do Mês (ANSI C vs RFC)
-            IF i == 2 .AND. Len( aParts ) >= 5 // ANSI C asctime
-               cDia := StrZero( Val( aParts[ 3 ] ), 2 )
-               cAno := aParts[ 5 ]
-            ELSEIF i == 3 // RFC 1123 / RFC 850
-               cDia := StrZero( Val( aParts[ 2 ] ), 2 )
-               cAno := aParts[ 4 ]
-               
-               IF Len( cAno ) == 2
-                  nAno := Val( cAno )
-                  cAno := iif( nAno < 50, "20" + cAno, "19" + cAno )
-               ENDIF
-            ELSE
-               LOOP 
-            ENDIF
-            
-            nDia := Val( cDia )
-            nAno := Val( cAno )
-            
-            IF nDia >= 1 .AND. nDia <= 31 .AND. nAno >= 1000 .AND. Len( cAno ) == 4
-               dRet := SToD( cAno + cMes + cDia )
-               IF !Empty( dRet )
-                  RETURN dRet
-               ENDIF
-            ENDIF
-         ENDIF
-      NEXT
-   ENDIF
+// -------------------------------------------------------------------------
+// Suporte a Formatos HTTP-date e Logs (Inglês e Português)
+// -------------------------------------------------------------------------
+cTemp := StrTran(cTemp,","," ")
+cTemp := StrTran(cTemp,"-"," ")
 
-   // -------------------------------------------------------------------------
-   // Fallback Original para Bancos de Dados (YYYY-MM-DD, DD/MM/YYYY, etc.)
-   // -------------------------------------------------------------------------
-   cTemp := AllTrim( xData ) // Restaura a string original limpa para o fallback
-   cTemp := StrTran( cTemp, "-", "/" ) 
-   cTemp := StrTran( cTemp, ".", "/" ) 
-   aParts := hb_ATokens( cTemp, "/" ) 
+DO WHILE "  " $ cTemp
+   cTemp := StrTran(cTemp,"  "," ")
+ENDDO
 
-   IF Len( aParts ) == 3
-      IF Len( aParts[ 1 ] ) == 4
-         cAno := aParts[ 1 ]
-         cMes := StrZero( Val( aParts[ 2 ] ), 2 ) 
-         cDia := StrZero( Val( aParts[ 3 ] ), 2 )
-      ELSE
-         cDia := StrZero( Val( aParts[ 1 ] ), 2 ) 
-         cMes := StrZero( Val( aParts[ 2 ] ), 2 )
-         cAno := aParts[ 3 ]
-         IF Len( cAno ) == 2
-            nAno := Val( cAno )
-            cAno := iif( nAno < 50, "20" + cAno, "19" + cAno ) 
-         ENDIF
+aParts := hb_ATokens(AllTrim(cTemp)," ")
+
+IF Len(aParts) >= 4
+   FOR i := 1 TO Len(aParts)
+      cMesStr := Upper(Left(aParts[i],3))
+
+      // 1. Busca primeiro em Inglês
+      nMes := AScan(aMonthsEN,cMesStr)
+
+      // 2. Se não encontrar, tenta em Português
+      IF nMes == 0
+         nMes := AScan(aMonthsPT,cMesStr)
       ENDIF
-      IF cAno + cMes + cDia == "00000000"
-         RETURN CToD( "" )
-      ENDIF 
-      dRet := SToD( cAno + cMes + cDia ) 
-      RETURN iif( Empty( dRet ), CToD( "" ), dRet )
-   ELSE
-      IF Len( cTemp ) == 8
-         IF Val( Left( cTemp, 4 ) ) > 1900
-            dRet := SToD( cTemp ) 
+
+      // Se encontrou o mês, processa
+      IF nMes > 0
+         cMes := StrZero(nMes,2)
+
+         // Extrai o Dia e o Ano baseado na posição do Mês (ANSI C vs RFC)
+         IF i == 2 .AND. Len(aParts) >= 5   // ANSI C asctime
+            cDia := StrZero(Val(aParts[3]),2)
+            cAno := aParts[5]
+         ELSEIF i == 3  // RFC 1123 / RFC 850
+            cDia := StrZero(Val(aParts[2]),2)
+            cAno := aParts[4]
+
+            IF Len(cAno) == 2
+               nAno := Val(cAno)
+               cAno := iif(nAno < 50,"20"+cAno,"19"+cAno)
+            ENDIF
          ELSE
-            dRet := SToD( Right( cTemp, 4 ) + SubStr( cTemp, 3, 2 ) + Left( cTemp, 2 ) ) 
+            LOOP
          ENDIF
-      ELSEIF Len( cTemp ) == 6
-         nAno := Val( Right( cTemp, 2 ) )
-         cAno := iif( nAno < 50, "20" + Right( cTemp, 2 ), "19" + Right( cTemp, 2 ) ) 
-         dRet := SToD( cAno + SubStr( cTemp, 3, 2 ) + Left( cTemp, 2 ) ) 
-      ELSE
-         dRet := CToD( xData ) 
+
+         nDia := Val(cDia)
+         nAno := Val(cAno)
+
+         IF nDia >= 1 .AND. nDia <= 31 .AND. nAno >= 1000 .AND. Len(cAno) == 4
+            dRet := SToD(cAno+cMes+cDia)
+            IF !Empty(dRet)
+               RETURN dRet
+            ENDIF
+         ENDIF
+      ENDIF
+   NEXT
+ENDIF
+
+// -------------------------------------------------------------------------
+// Fallback Original para Bancos de Dados (YYYY-MM-DD, DD/MM/YYYY, etc.)
+// -------------------------------------------------------------------------
+cTemp  := AllTrim(xData)  // Restaura a string original limpa para o fallback
+cTemp  := StrTran(cTemp,"-","/")
+cTemp  := StrTran(cTemp,".","/")
+aParts := hb_ATokens(cTemp,"/")
+
+IF Len(aParts) == 3
+   IF Len(aParts[1]) == 4
+      cAno := aParts[1]
+      cMes := StrZero(Val(aParts[2]),2)
+      cDia := StrZero(Val(aParts[3]),2)
+   ELSE
+      cDia := StrZero(Val(aParts[1]),2)
+      cMes := StrZero(Val(aParts[2]),2)
+      cAno := aParts[3]
+      IF Len(cAno) == 2
+         nAno := Val(cAno)
+         cAno := iif(nAno < 50,"20"+cAno,"19"+cAno)
       ENDIF
    ENDIF
+   IF cAno+cMes+cDia == "00000000"
+      RETURN CToD("")
+   ENDIF
+   dRet := SToD(cAno+cMes+cDia)
+   RETURN iif(Empty(dRet),CToD(""),dRet)
+ELSE
+   IF Len(cTemp) == 8
+      IF Val(Left(cTemp,4)) > 1900
+         dRet := SToD(cTemp)
+      ELSE
+         dRet := SToD(Right(cTemp,4)+SubStr(cTemp,3,2)+Left(cTemp,2))
+      ENDIF
+   ELSEIF Len(cTemp) == 6
+      nAno := Val(Right(cTemp,2))
+      cAno := iif(nAno < 50,"20"+Right(cTemp,2),"19"+Right(cTemp,2))
+      dRet := SToD(cAno+SubStr(cTemp,3,2)+Left(cTemp,2))
+   ELSE
+      dRet := CToD(xData)
+   ENDIF
+ENDIF
 RETURN dRet
 // +--------------------------------------------------------------------
 // + Metodos Internos do RDD
 // +--------------------------------------------------------------------
 
-STATIC FUNCTION FCSV_INIT( nRDD )
-   HB_SYMBOL_UNUSED( nRDD )
-   RETURN HB_SUCCESS
 
-STATIC FUNCTION FCSV_NEW( pWA )
-   // Adicionado o 9º elemento (0) para guardar o tamanho do BOM
-   LOCAL aWData := { F_ERROR, .F., .F., "", 0, "", {}, {}, 0 } 
-   USRRDD_AREADATA( pWA, aWData )
-   RETURN HB_SUCCESS
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_INIT()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_INIT(nRDD)
 
-STATIC FUNCTION FCSV_CREATE( nWA, aOpenInfo )
-   LOCAL oError := ErrorNew()
-   oError:GenCode     := EG_CREATE
-   oError:SubCode     := 1004
-   oError:Description := hb_langErrMsg( EG_CREATE ) + " (" + hb_langErrMsg( EG_UNSUPPORTED ) + ")"
-   oError:FileName    := aOpenInfo[ UR_OI_NAME ]
+HB_SYMBOL_UNUSED(nRDD)
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_NEW()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_NEW(pWA)
+
+// Adicionado o 9º elemento (0) para guardar o tamanho do BOM
+LOCAL aWData := {F_ERROR,.F.,.F.,"",0,"",{},{},0}
+USRRDD_AREADATA(pWA,aWData)
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_CREATE()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_CREATE(nWA,aOpenInfo)
+
+LOCAL oError := ErrorNew()
+oError:GenCode     := EG_CREATE
+oError:SubCode     := 1004
+oError:Description := hb_langErrMsg(EG_CREATE)+" ("+hb_langErrMsg(EG_UNSUPPORTED)+")"
+oError:FileName    := aOpenInfo[UR_OI_NAME]
+oError:CanDefault  := .T.
+UR_SUPER_ERROR(nWA,oError)
+RETURN HB_FAILURE
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_OPEN()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_OPEN(nWA,aOpenInfo)
+
+LOCAL cName,nMode,nHandle,aWData,aField,oError,nResult,cDelimDetectado
+LOCAL cHeaderLine,aNames,aParsedDef,nI,cLine,cPrimeiraLinha
+LOCAL nBOMSize    := 0  // Nova variável
+
+IF aOpenInfo[UR_OI_ALIAS] == NIL
+   hb_FNameSplit(aOpenInfo[UR_OI_NAME],,@cName)
+   aOpenInfo[ UR_OI_ALIAS ] := cName
+ENDIF
+
+nMode := iif(aOpenInfo[UR_OI_SHARED],FO_SHARED,FO_EXCLUSIVE)+;
+ iif(aOpenInfo[UR_OI_READONLY],FO_READ,FO_READWRITE)
+
+cDelimDetectado := FDELIM(aOpenInfo[UR_OI_NAME],s_nReadSize)
+
+nHandle := FOpen(aOpenInfo[UR_OI_NAME],nMode)
+IF nHandle == F_ERROR
+   //GravarLogFCSVRDD( "Erro ao abrir arquivo. OS Code: " + AllTrim( Str( FError() ) ), aOpenInfo[ UR_OI_NAME ] )
+
+   oError             := ErrorNew()
+   oError:GenCode     := EG_OPEN
+   oError:SubCode     := 1001
+   oError:Description := hb_langErrMsg(EG_OPEN)
+   oError:FileName    := aOpenInfo[UR_OI_NAME]
+   oError:OsCode      := FError()
    oError:CanDefault  := .T.
-   UR_SUPER_ERROR( nWA, oError )
+   UR_SUPER_ERROR(nWA,oError)
    RETURN HB_FAILURE
+ENDIF
 
-STATIC FUNCTION FCSV_OPEN( nWA, aOpenInfo )
-   LOCAL cName, nMode, nHandle, aWData, aField, oError, nResult, cDelimDetectado
-   LOCAL cHeaderLine, aNames, aParsedDef, nI, cLine, cPrimeiraLinha
-   LOCAL nBOMSize := 0 // Nova variável
+// >>> DETECÇÃO AUTOMÁTICA INTELIGENTE <<<
+cPrimeiraLinha := Space(s_nReadSize)
+FRead(nHandle,@cPrimeiraLinha,s_nReadSize)
 
-   IF aOpenInfo[ UR_OI_ALIAS ] == NIL
-      hb_FNameSplit( aOpenInfo[ UR_OI_NAME ], , @cName )
-      aOpenInfo[ UR_OI_ALIAS ] := cName
-   ENDIF
+// NOVA LÓGICA DE DETECÇÃO DE BOM
+IF Left(cPrimeiraLinha,3) == Chr(239)+Chr(187)+Chr(191)   // UTF-8
+   nBOMSize := 3
+ELSEIF Left(cPrimeiraLinha,2) == Chr(255)+Chr(254)  // UTF-16 LE
+   nBOMSize := 2
+ELSEIF Left(cPrimeiraLinha,2) == Chr(254)+Chr(255)  // UTF-16 BE
+   nBOMSize := 2
+ELSE
+   nBOMSize := 0
+ENDIF
 
-   nMode := iif( aOpenInfo[ UR_OI_SHARED ], FO_SHARED, FO_EXCLUSIVE ) + ;
-            iif( aOpenInfo[ UR_OI_READONLY ], FO_READ, FO_READWRITE )
+FSeek(nHandle,nBOMSize,FS_SET)
 
-   cDelimDetectado := FDELIM( aOpenInfo[ UR_OI_NAME ], s_nReadSize )
 
-   nHandle := FOpen( aOpenInfo[ UR_OI_NAME ], nMode )
-   IF nHandle == F_ERROR
-      //GravarLogFCSVRDD( "Erro ao abrir arquivo. OS Code: " + AllTrim( Str( FError() ) ), aOpenInfo[ UR_OI_NAME ] )
-      
-      oError := ErrorNew()
-      oError:GenCode     := EG_OPEN
-      oError:SubCode     := 1001
-      oError:Description := hb_langErrMsg( EG_OPEN )
-      oError:FileName    := aOpenInfo[ UR_OI_NAME ]
-      oError:OsCode      := FError()
-      oError:CanDefault  := .T.
-      UR_SUPER_ERROR( nWA, oError )
-      RETURN HB_FAILURE
-   ENDIF
 
- // >>> DETECÇÃO AUTOMÁTICA INTELIGENTE <<<
-   cPrimeiraLinha := Space( s_nReadSize )
-   FRead( nHandle, @cPrimeiraLinha, s_nReadSize )
+// Mod 2 e 3: Ajustar para Pipe ou Tab caso existam na 1ª linha
+IF "|" $ cPrimeiraLinha
+   s_cFieldDelim := "|"
+ELSEIF Chr(9) $ cPrimeiraLinha
+   s_cFieldDelim := Chr(9)
+ENDIF
 
-   // NOVA LÓGICA DE DETECÇÃO DE BOM
-   IF Left( cPrimeiraLinha, 3 ) == Chr( 239 ) + Chr( 187 ) + Chr( 191 ) // UTF-8
-      nBOMSize := 3
-   ELSEIF Left( cPrimeiraLinha, 2 ) == Chr( 255 ) + Chr( 254 ) // UTF-16 LE
-      nBOMSize := 2
-   ELSEIF Left( cPrimeiraLinha, 2 ) == Chr( 254 ) + Chr( 255 ) // UTF-16 BE
-      nBOMSize := 2
-   ELSE
-      nBOMSize := 0
-   ENDIF
-   
-   FSeek( nHandle, nBOMSize, FS_SET )
-   
-   
+// Mod 4: Detecção super segura de Arquivo Tipado (Exige '","' p/ não confundir com dados)
+IF (",N," $ Upper(cPrimeiraLinha) .OR. ",C," $ Upper(cPrimeiraLinha) .OR. ",D," $ Upper(cPrimeiraLinha)) .AND. At ('","',cPrimeiraLinha) > 0
+   s_cFieldDelim  := ","
+   s_lUseHeader   := .T.
+   s_lUseTypedCSV := .T.
+   s_lUseSplit    := .T.
+ENDIF
 
-   // Mod 2 e 3: Ajustar para Pipe ou Tab caso existam na 1ª linha
-   IF "|" $ cPrimeiraLinha
-      s_cFieldDelim := "|"
-   ELSEIF Chr(9) $ cPrimeiraLinha
-      s_cFieldDelim := Chr(9)
-   ENDIF
+aWData      := USRRDD_AREADATA(nWA)
+aWData[ 1 ] := nHandle
+aWData[ 2 ] := .F.
+aWData[ 3 ] := .F.
+aWData[ 4 ] := cDelimDetectado
+aWData[ 5 ] := 0
+aWData[ 6 ] := ""
+aWData[ 7 ] := {}
+aWData[ 8 ] := {}
+aWData[ 9 ] := nBOMSize   // Salva o tamanho do BOM para a navegação do RDD
 
-   // Mod 4: Detecção super segura de Arquivo Tipado (Exige '","' p/ não confundir com dados)
-   IF ( ",N," $ Upper( cPrimeiraLinha ) .OR. ",C," $ Upper( cPrimeiraLinha ) .OR. ",D," $ Upper( cPrimeiraLinha ) ) .AND. At( '","', cPrimeiraLinha ) > 0
-      s_cFieldDelim  := ","
-      s_lUseHeader   := .T.
-      s_lUseTypedCSV := .T.
-      s_lUseSplit    := .T.
-   ENDIF
-
-   aWData := USRRDD_AREADATA( nWA )
-   aWData[ 1 ] := nHandle
-   aWData[ 2 ] := .F.
-   aWData[ 3 ] := .F.
-   aWData[ 4 ] := cDelimDetectado
-   aWData[ 5 ] := 0
-   aWData[ 6 ] := ""
-   aWData[ 7 ] := {}
-   aWData[ 8 ] := {}
-   aWData[ 9 ] := nBOMSize // Salva o tamanho do BOM para a navegação do RDD
-
-   // 1. SE O CABEÇALHO FOI PASSADO MANUALMENTE VIA MATRIZ
-   IF Len( s_aManualHeader ) > 0
-      UR_SUPER_SETFIELDEXTENT( nWA, Len( s_aManualHeader ) )
-      FOR nI := 1 TO Len( s_aManualHeader )
-         aField := Array( UR_FI_SIZE )
-         IF s_lUseTypedCSV
-            aParsedDef := ParseFieldDefinition( s_aManualHeader[ nI ] )
-            aField[ UR_FI_NAME ]    := AllTrim( aParsedDef[ 1 ] )
-            AAdd( aWData[ 8 ], { aParsedDef[ 1 ], aParsedDef[ 2 ], aParsedDef[ 3 ], aParsedDef[ 4 ] } )
-            AAdd( aWData[ 7 ], aParsedDef[ 1 ] )
-         ELSE
-            aField[ UR_FI_NAME ]    := AllTrim( StrTran( s_aManualHeader[ nI ], '"', '' ) )
-            AAdd( aWData[ 8 ], { aField[ UR_FI_NAME ], "C", 0, 0 } )
-            AAdd( aWData[ 7 ], aField[ UR_FI_NAME ] )
-         ENDIF
-         
-         aField[ UR_FI_TYPE ]    := "C"
-         aField[ UR_FI_TYPEEXT ] := 0
-         aField[ UR_FI_LEN ]     := 0
-         aField[ UR_FI_DEC ]     := 0
-         UR_SUPER_ADDFIELD( nWA, aField )
-      NEXT
-   ELSE
-      // 2. LEITURA AUTOMÁTICA DO ARQUIVO CSV
-      IF s_lUseHeader
-         cHeaderLine := FREADLINE( nHandle, s_nReadSize, .T., cDelimDetectado )
-         IF cHeaderLine <> '__FINAL__'
-            IF s_lUseSplit
-               aNames := SplitAspasRDD( cHeaderLine, s_cFieldDelim )
-            ELSE
-               aNames := hb_ATokens( cHeaderLine, s_cFieldDelim )
-            ENDIF   
-            
-            UR_SUPER_SETFIELDEXTENT( nWA, Len( aNames ) )
-            FOR nI := 1 TO Len( aNames )
-               aField := Array( UR_FI_SIZE )
-               
-               IF s_lUseTypedCSV
-                  aParsedDef := ParseFieldDefinition( aNames[ nI ] )
-                  aField[ UR_FI_NAME ] := AllTrim( aParsedDef[ 1 ] )
-                  AAdd( aWData[ 8 ], { aParsedDef[ 1 ], aParsedDef[ 2 ], aParsedDef[ 3 ], aParsedDef[ 4 ] } )
-                  AAdd( aWData[ 7 ], aParsedDef[ 1 ] ) // Armazena apenas o nome limpo em aWData[7]
-               ELSE
-                  aField[ UR_FI_NAME ] := AllTrim( StrTran( aNames[ nI ], '"', '' ) )
-                  AAdd( aWData[ 8 ], { aField[ UR_FI_NAME ], "C", 0, 0 } )
-                  AAdd( aWData[ 7 ], aField[ UR_FI_NAME ] ) // Armazena apenas o nome limpo
-               ENDIF
-               
-               aField[ UR_FI_TYPE ]    := "C"
-               aField[ UR_FI_TYPEEXT ] := 0
-               aField[ UR_FI_LEN ]     := 0
-               aField[ UR_FI_DEC ]     := 0
-               UR_SUPER_ADDFIELD( nWA, aField )
-            NEXT
-         ENDIF
+// 1. SE O CABEÇALHO FOI PASSADO MANUALMENTE VIA MATRIZ
+IF Len(s_aManualHeader) > 0
+   UR_SUPER_SETFIELDEXTENT(nWA,Len(s_aManualHeader))
+   FOR nI := 1 TO Len(s_aManualHeader)
+      aField := Array(UR_FI_SIZE)
+      IF s_lUseTypedCSV
+         aParsedDef           := ParseFieldDefinition(s_aManualHeader[nI])
+         aField[ UR_FI_NAME ] := AllTrim(aParsedDef[1])
+         AAdd(aWData[8],{aParsedDef[1],aParsedDef[2],aParsedDef[3],aParsedDef[4]})
+         AAdd(aWData[7],aParsedDef[1])
+      ELSE
+         aField[ UR_FI_NAME ] := AllTrim(StrTran(s_aManualHeader[nI],'"',''))
+         AAdd(aWData[8],{aField[UR_FI_NAME],"C",0,0})
+         AAdd(aWData[7],aField[UR_FI_NAME])
       ENDIF
 
-      IF !s_lUseHeader .OR. Len( aWData[ 7 ] ) == 0
-         cLine := FREADLINE( nHandle, s_nReadSize, .T., cDelimDetectado )
-         IF cLine <> '__FINAL__'
-            IF s_lUseSplit
-              aNames := SplitAspasRDD( cLine, s_cFieldDelim )
-            ELSE
-              aNames := hb_ATokens( cLine, s_cFieldDelim )
-            ENDIF  
-            UR_SUPER_SETFIELDEXTENT( nWA, Len( aNames ) )
-            FOR nI := 1 TO Len( aNames )
-               aField := Array( UR_FI_SIZE )
-               aField[ UR_FI_NAME ]    := "CAMPO" + AllTrim( Str( nI ) )
-               aField[ UR_FI_TYPE ]    := "C"
-               aField[ UR_FI_TYPEEXT ] := 0
-               aField[ UR_FI_LEN ]     := 0
-               aField[ UR_FI_DEC ]     := 0
-               UR_SUPER_ADDFIELD( nWA, aField )
-               AAdd( aWData[ 8 ], { aField[ UR_FI_NAME ], "C", 0, 0 } )
-               AAdd( aWData[ 7 ], aField[ UR_FI_NAME ] )
-            NEXT
+      aField[ UR_FI_TYPE ]    := "C"
+      aField[ UR_FI_TYPEEXT ] := 0
+      aField[ UR_FI_LEN ]     := 0
+      aField[ UR_FI_DEC ]     := 0
+      UR_SUPER_ADDFIELD(nWA,aField)
+   NEXT
+ELSE
+   // 2. LEITURA AUTOMÁTICA DO ARQUIVO CSV
+   IF s_lUseHeader
+      cHeaderLine := FREADLINE(nHandle,s_nReadSize,.T.,cDelimDetectado)
+      IF cHeaderLine <> '__FINAL__'
+         IF s_lUseSplit
+            aNames := SplitAspasRDD(cHeaderLine,s_cFieldDelim)
          ELSE
-            UR_SUPER_SETFIELDEXTENT( nWA, 1 )
-            aField := Array( UR_FI_SIZE )
-            aField[ UR_FI_NAME ]    := "CAMPO1"
+            aNames := hb_ATokens(cHeaderLine,s_cFieldDelim)
+         ENDIF
+
+         UR_SUPER_SETFIELDEXTENT(nWA,Len(aNames))
+         FOR nI := 1 TO Len(aNames)
+            aField := Array(UR_FI_SIZE)
+
+            IF s_lUseTypedCSV
+               aParsedDef           := ParseFieldDefinition(aNames[nI])
+               aField[ UR_FI_NAME ] := AllTrim(aParsedDef[1])
+               AAdd(aWData[8],{aParsedDef[1],aParsedDef[2],aParsedDef[3],aParsedDef[4]})
+               AAdd(aWData[7],aParsedDef[1])  // Armazena apenas o nome limpo em aWData[7]
+            ELSE
+               aField[ UR_FI_NAME ] := AllTrim(StrTran(aNames[nI],'"',''))
+               AAdd(aWData[8],{aField[UR_FI_NAME],"C",0,0})
+               AAdd(aWData[7],aField[UR_FI_NAME])   // Armazena apenas o nome limpo
+            ENDIF
+
             aField[ UR_FI_TYPE ]    := "C"
             aField[ UR_FI_TYPEEXT ] := 0
             aField[ UR_FI_LEN ]     := 0
             aField[ UR_FI_DEC ]     := 0
-            UR_SUPER_ADDFIELD( nWA, aField )
-            AAdd( aWData[ 8 ], { "CAMPO1", "C", 0, 0 } )
-            AAdd( aWData[ 7 ], "CAMPO1" )
-         ENDIF
-         FSeek( nHandle, aWData[ 9 ], FS_SET ) // Substitui o zero pela variável do BOM
-         IF s_lUseHeader
-            FREADLINE( nHandle, s_nReadSize, .T., cDelimDetectado )
-         ENDIF
+            UR_SUPER_ADDFIELD(nWA,aField)
+         NEXT
       ENDIF
    ENDIF
 
-   nResult := UR_SUPER_OPEN( nWA, aOpenInfo )
-
-   IF nResult == HB_SUCCESS
-      FCSV_GOTOP( nWA )
+   IF !s_lUseHeader .OR. Len(aWData[7]) == 0
+      cLine := FREADLINE(nHandle,s_nReadSize,.T.,cDelimDetectado)
+      IF cLine <> '__FINAL__'
+         IF s_lUseSplit
+            aNames := SplitAspasRDD(cLine,s_cFieldDelim)
+         ELSE
+            aNames := hb_ATokens(cLine,s_cFieldDelim)
+         ENDIF
+         UR_SUPER_SETFIELDEXTENT(nWA,Len(aNames))
+         FOR nI := 1 TO Len(aNames)
+            aField                  := Array(UR_FI_SIZE)
+            aField[ UR_FI_NAME ]    := "CAMPO"+AllTrim(Str(nI))
+            aField[ UR_FI_TYPE ]    := "C"
+            aField[ UR_FI_TYPEEXT ] := 0
+            aField[ UR_FI_LEN ]     := 0
+            aField[ UR_FI_DEC ]     := 0
+            UR_SUPER_ADDFIELD(nWA,aField)
+            AAdd(aWData[8],{aField[UR_FI_NAME],"C",0,0})
+            AAdd(aWData[7],aField[UR_FI_NAME])
+         NEXT
+      ELSE
+         UR_SUPER_SETFIELDEXTENT(nWA,1)
+         aField                  := Array(UR_FI_SIZE)
+         aField[ UR_FI_NAME ]    := "CAMPO1"
+         aField[ UR_FI_TYPE ]    := "C"
+         aField[ UR_FI_TYPEEXT ] := 0
+         aField[ UR_FI_LEN ]     := 0
+         aField[ UR_FI_DEC ]     := 0
+         UR_SUPER_ADDFIELD(nWA,aField)
+         AAdd(aWData[8],{"CAMPO1","C",0,0})
+         AAdd(aWData[7],"CAMPO1")
+      ENDIF
+      FSeek(nHandle,aWData[9],FS_SET)   // Substitui o zero pela variável do BOM
+      IF s_lUseHeader
+         FREADLINE(nHandle,s_nReadSize,.T.,cDelimDetectado)
+      ENDIF
    ENDIF
+ENDIF
 
-   RETURN nResult
+nResult := UR_SUPER_OPEN(nWA,aOpenInfo)
 
-STATIC FUNCTION FCSV_CLOSE( nWA )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   IF aWData[ 1 ] >= 0
-      FClose( aWData[ 1 ] )
-      aWData[ 1 ] := F_ERROR
-   ENDIF
-   RETURN UR_SUPER_CLOSE( nWA )
+IF nResult == HB_SUCCESS
+   FCSV_GOTOP(nWA)
+ENDIF
 
-STATIC FUNCTION FCSV_READNEXT( aWData )
-   LOCAL cLine := FREADLINE( aWData[ 1 ], s_nReadSize, .T., aWData[ 4 ] )
-   
-   IF cLine == '__FINAL__'
-      aWData[ 3 ] := .T.
-      aWData[ 6 ] := ""
-      RETURN HB_FAILURE
-   ELSE
-      aWData[ 3 ] := .F.
-      aWData[ 6 ] := cLine
-      aWData[ 5 ]++
-      RETURN HB_SUCCESS
-   ENDIF
+RETURN nResult
 
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_CLOSE()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_CLOSE(nWA)
+
+LOCAL aWData := USRRDD_AREADATA(nWA)
+IF aWData[1] >= 0
+   FClose(aWData[1])
+   aWData[ 1 ] := F_ERROR
+ENDIF
+RETURN UR_SUPER_CLOSE(nWA)
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_READNEXT()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_READNEXT(aWData)
+
+LOCAL cLine := FREADLINE(aWData[1],s_nReadSize,.T.,aWData[4])
+
+IF cLine == '__FINAL__'
+   aWData[ 3 ] := .T.
+   aWData[ 6 ] := ""
    RETURN HB_FAILURE
+ELSE
+   aWData[ 3 ] := .F.
+   aWData[ 6 ] := cLine
+   aWData[5] ++
+   RETURN HB_SUCCESS
+ENDIF
+
+RETURN HB_FAILURE
 
 
 // +--------------------------------------------------------------------
 // + Obtenção de Valor do Campo (Suporte a Posição Fixa, Delimitados e Tipagem)
 // +--------------------------------------------------------------------
-STATIC FUNCTION FCSV_GETVALUE( nWA, nField, xValue )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   LOCAL aCols, cType, xRawVal, aStruct, nI, nPos := 1, nLen
 
-   IF aWData[ 3 ]
-      xValue := ""
-      RETURN HB_SUCCESS
-   ENDIF
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_GETVALUE()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_GETVALUE(nWA,nField,xValue)
 
-   // 1. SE O DELIMITADOR ESTIVER VAZIO, TRATA COMO TAMANHO FIXO (SDF/POSIÇÃO POR BYTE)
-   IF Empty( s_cFieldDelim )
-      aStruct := aWData[ 8 ] // Matriz estrutural {cName, cType, nLen, nDec}
-      
-      IF nField >= 1 .AND. Len( aStruct ) > 0 .AND. nField <= Len( aStruct )
-         nPos := 1
-         FOR nI := 1 TO nField - 1
-            nPos += aStruct[ nI, 3 ] // Soma o tamanho (Len) dos campos anteriores
-         NEXT
-         
-         nLen := aStruct[ nField, 3 ]
-         xRawVal := SubStr( aWData[ 6 ], nPos, nLen )
-      ELSE
-         xRawVal := ""
-      ENDIF
-   ELSE
-      // 2. COMPORTAMENTO PADRÃO DE DELIMITADOS (CSV / PIPE / TAB)
-      IF s_lUseSplit
-         aCols := SplitAspasRDD( aWData[ 6 ], s_cFieldDelim )
-      ELSE
-         aCols := hb_ATokens( aWData[ 6 ], s_cFieldDelim )
-      ENDIF
+LOCAL aWData := USRRDD_AREADATA(nWA)
+LOCAL aCols,cType,xRawVal,aStruct,nI,nPos := 1,nLen
 
-      IF nField >= 1 .AND. Len( aCols ) > 0 .AND. nField <= Len( aCols )
-         xRawVal := aCols[ nField ]
-      ELSE
-         xRawVal := ""
-      ENDIF
-   ENDIF
-
-   // 3. APLICAÇÃO DA REGRA DE RETORNO CONVERTIDO (TIPADO) SE ATIVO
-   IF s_lRetornaTipado .AND. Len( aWData[ 8 ] ) >= nField
-      cType := aWData[ 8 ][ nField ][ 2 ] // Pega o tipo original (N, C, D, L, M)
-      
-      DO CASE
-         CASE cType == "N"
-            xValue := Val( xRawVal )
-        CASE cType == "D"
-            xValue := StrDateRdd( xRawVal )
-         CASE cType == "T" .OR. cType == "@"
-            xValue := UniversalDateTime( xRawVal ) // <-- INJEÇÃO: Conversor Universal de Data e Hora       
-         CASE cType == "L"
-            xValue := StrLogicrdd( xRawVal, .F. )
-         OTHERWISE
-            xValue := AllTrim( xRawVal ) // Limpa espaços extras para strings/caracteres
-      ENDCASE
-   ELSE
-      // Comportamento normal do RDD: Retorna bruto (com Trim se for tamanho fixo)
-      IF Empty( s_cFieldDelim )
-         xValue := AllTrim( xRawVal )
-      ELSE
-         xValue := xRawVal
-      ENDIF
-   ENDIF
-
+IF aWData[3]
+   xValue := ""
    RETURN HB_SUCCESS
+ENDIF
 
-STATIC FUNCTION FCSV_GOTOP( nWA )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   
-   FSeek( aWData[ 1 ], aWData[ 9 ], FS_SET ) // Retorna para o Início dos Dados, não para o zero
-   
-   IF Len( s_aManualHeader ) == 0
-      IF s_lUseHeader
-         FREADLINE( aWData[ 1 ], s_nReadSize, .T., aWData[ 4 ] )
-      ENDIF
+// 1. SE O DELIMITADOR ESTIVER VAZIO, TRATA COMO TAMANHO FIXO (SDF/POSIÇÃO POR BYTE)
+IF Empty(s_cFieldDelim)
+   aStruct := aWData[8]   // Matriz estrutural {cName, cType, nLen, nDec}
+
+   IF nField >= 1 .AND. Len(aStruct) > 0 .AND. nField <= Len(aStruct)
+      nPos := 1
+      FOR nI := 1 TO nField - 1
+         nPos += aStruct[nI,3]  // Soma o tamanho (Len) dos campos anteriores
+      NEXT
+
+      nLen    := aStruct[nField,3]
+      xRawVal := SubStr(aWData[6],nPos,nLen)
+   ELSE
+      xRawVal := ""
    ENDIF
-   
-   aWData[ 2 ] := .T.
-   aWData[ 3 ] := .F.
-   aWData[ 5 ] := 0
-   
-   FCSV_READNEXT( aWData )
-   RETURN HB_SUCCESS
+ELSE
+   // 2. COMPORTAMENTO PADRÃO DE DELIMITADOS (CSV / PIPE / TAB)
+   IF s_lUseSplit
+      aCols := SplitAspasRDD(aWData[6],s_cFieldDelim)
+   ELSE
+      aCols := hb_ATokens(aWData[6],s_cFieldDelim)
+   ENDIF
 
-STATIC FUNCTION FCSV_GOBOTTOM( nWA )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   
-   FCSV_GOTOP( nWA )
-   WHILE !aWData[ 3 ]
-      IF FCSV_READNEXT( aWData ) == HB_FAILURE
+   IF nField >= 1 .AND. Len(aCols) > 0 .AND. nField <= Len(aCols)
+      xRawVal := aCols[nField]
+   ELSE
+      xRawVal := ""
+   ENDIF
+ENDIF
+
+// 3. APLICAÇÃO DA REGRA DE RETORNO CONVERTIDO (TIPADO) SE ATIVO
+IF s_lRetornaTipado .AND. Len(aWData[8]) >= nField
+   cType := aWData[8,nField,2]  // Pega o tipo original (N, C, D, L, M)
+
+   DO CASE
+   CASE cType == "N"
+      xValue := Val(xRawVal)
+   CASE cType == "D"
+      xValue := StrDateRdd(xRawVal)
+   CASE cType == "T" .OR. cType == "@"
+      xValue := UniversalDateTime(xRawVal)  // <-- INJEÇÃO: Conversor Universal de Data e Hora
+   CASE cType == "L"
+      xValue := StrLogicrdd(xRawVal,.F.)
+   OTHERWISE
+      xValue := AllTrim(xRawVal)  // Limpa espaços extras para strings/caracteres
+   ENDCASE
+ELSE
+   // Comportamento normal do RDD: Retorna bruto (com Trim se for tamanho fixo)
+   IF Empty(s_cFieldDelim)
+      xValue := AllTrim(xRawVal)
+   ELSE
+      xValue := xRawVal
+   ENDIF
+ENDIF
+
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_GOTOP()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_GOTOP(nWA)
+
+LOCAL aWData := USRRDD_AREADATA(nWA)
+
+FSeek(aWData[1],aWData[9],FS_SET)   // Retorna para o Início dos Dados, não para o zero
+
+IF Len(s_aManualHeader) == 0
+   IF s_lUseHeader
+      FREADLINE(aWData[1],s_nReadSize,.T.,aWData[4])
+   ENDIF
+ENDIF
+
+aWData[ 2 ] := .T.
+aWData[ 3 ] := .F.
+aWData[ 5 ] := 0
+
+FCSV_READNEXT(aWData)
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_GOBOTTOM()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_GOBOTTOM(nWA)
+
+LOCAL aWData := USRRDD_AREADATA(nWA)
+
+FCSV_GOTOP(nWA)
+WHILE !aWData[3]
+   IF FCSV_READNEXT(aWData) == HB_FAILURE
+      EXIT
+   ENDIF
+ENDDO
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_SKIPRAW()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_SKIPRAW(nWA,nRecords)
+
+LOCAL aWData := USRRDD_AREADATA(nWA)
+LOCAL n
+
+IF nRecords == 0
+   RETURN HB_SUCCESS
+ENDIF
+
+IF nRecords > 0
+   FOR n := 1 TO nRecords
+      IF aWData[3]
          EXIT
       ENDIF
-   ENDDO
-   RETURN HB_SUCCESS
-
-STATIC FUNCTION FCSV_SKIPRAW( nWA, nRecords )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   LOCAL n
-
-   IF nRecords == 0
-      RETURN HB_SUCCESS
-   ENDIF
-
-   IF nRecords > 0
-      FOR n := 1 TO nRecords
-         IF aWData[ 3 ]
+      FCSV_READNEXT(aWData)
+   NEXT
+ELSE
+   n := aWData[5]+nRecords
+   FCSV_GOTOP(nWA)
+   IF n > 1
+      FOR n := 1 TO n - 1
+         IF aWData[3]
             EXIT
          ENDIF
-         FCSV_READNEXT( aWData )
+         FCSV_READNEXT(aWData)
       NEXT
+   ENDIF
+ENDIF
+
+aWData[ 2 ] := (aWData[5] <= 1)
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_GOTO()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_GOTO(nWA,nRecord)
+
+LOCAL aWData := USRRDD_AREADATA(nWA)
+
+IF nRecord <= 1
+   FCSV_GOTOP(nWA)
+ELSE
+   FCSV_GOTOP(nWA)
+   FCSV_SKIPRAW(nWA,nRecord - 1)
+ENDIF
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_GOTOID()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_GOTOID(nWA,nRecord)
+
+RETURN FCSV_GOTO(nWA,nRecord)
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_Bof()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_Bof(nWA,lBof)
+
+LOCAL aWData := USRRDD_AREADATA(nWA)
+lBof := aWData[2]
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_EOF()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_EOF(nWA,lEof)
+
+LOCAL aWData := USRRDD_AREADATA(nWA)
+lEof := aWData[3]
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_DELETED()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_DELETED(nWA,lDeleted)
+
+HB_SYMBOL_UNUSED(nWA)
+lDeleted := .F.
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_RECID()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_RECID(nWA,nRecNo)
+
+LOCAL aWData := USRRDD_AREADATA(nWA)
+nRecNo := aWData[5]
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_RECCOUNT()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_RECCOUNT(nWA,nRecords)
+
+LOCAL aWData  := USRRDD_AREADATA(nWA)
+LOCAL nHandle := aWData[1]
+LOCAL nPosAnt,nLines,cLine
+
+IF !s_lUseRecCount
+   nRecords := 0
+   RETURN HB_SUCCESS
+ENDIF
+
+nPosAnt := FSeek(nHandle,0,FS_RELATIVE)
+nLines  := 0
+
+FSeek(nHandle,aWData[9],FS_SET)   // Inicia a contagem pulando o BOM
+IF Len(s_aManualHeader) == 0
+   IF s_lUseHeader
+      FREADLINE(nHandle,s_nReadSize,.T.,aWData[4])
+   ENDIF
+ENDIF
+
+WHILE .T.
+   cLine := FREADLINE(nHandle,s_nReadSize,.T.,aWData[4])
+   IF cLine == '__FINAL__'
+      EXIT
+   ENDIF
+   nLines ++
+ENDDO
+
+FSeek(nHandle,nPosAnt,FS_SET)
+nRecords := nLines
+RETURN HB_SUCCESS
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_FCOUNT()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_FCOUNT(nWA,nFields)
+
+LOCAL aWData := USRRDD_AREADATA(nWA)
+LOCAL aCols
+
+IF s_lUseHeader .AND. Len(aWData[7]) > 0
+   nFields := Len(aWData[7])
+ELSEIF !Empty(aWData[6])
+   IF s_lUseSplit
+      aCols := SplitAspasRDD(aWData[6],s_cFieldDelim)
    ELSE
-      n := aWData[ 5 ] + nRecords
-      FCSV_GOTOP( nWA )
-      IF n > 1
-         FOR n := 1 TO n - 1
-            IF aWData[ 3 ]
-               EXIT
-            ENDIF
-            FCSV_READNEXT( aWData )
-         NEXT
-      ENDIF
+      aCols := hb_ATokens(aWData[6],s_cFieldDelim)
    ENDIF
+   nFields := Len(aCols)
+ELSE
+   nFields := 1
+ENDIF
+RETURN HB_SUCCESS
 
-   aWData[ 2 ] := ( aWData[ 5 ] <= 1 )
-   RETURN HB_SUCCESS
 
-STATIC FUNCTION FCSV_GOTO( nWA, nRecord )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   
-   IF nRecord <= 1
-      FCSV_GOTOP( nWA )
-   ELSE
-      FCSV_GOTOP( nWA )
-      FCSV_SKIPRAW( nWA, nRecord - 1 )
-   ENDIF
-   RETURN HB_SUCCESS
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_RDDINFO()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_RDDINFO(nIndex,cargo)
 
-STATIC FUNCTION FCSV_GOTOID( nWA, nRecord )
-   RETURN FCSV_GOTO( nWA, nRecord )
+Local xRet := NIL
+HB_SYMBOL_UNUSED(cargo)
 
-STATIC FUNCTION FCSV_Bof( nWA, lBof )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   lBof := aWData[ 2 ]
-   RETURN HB_SUCCESS
+DO CASE
+CASE nIndex == RDDI_TABLEEXT
+   xRet := ".csv"
 
-STATIC FUNCTION FCSV_EOF( nWA, lEof )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   lEof := aWData[ 3 ]
-   RETURN HB_SUCCESS
+CASE nIndex == RDDI_MEMOEXT
+   xRet := ""
 
-STATIC FUNCTION FCSV_DELETED( nWA, lDeleted )
-   HB_SYMBOL_UNUSED( nWA )
-   lDeleted := .F.
-   RETURN HB_SUCCESS
-
-STATIC FUNCTION FCSV_RECID( nWA, nRecNo )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   nRecNo := aWData[ 5 ]
-   RETURN HB_SUCCESS
-
-STATIC FUNCTION FCSV_RECCOUNT( nWA, nRecords )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   LOCAL nHandle := aWData[ 1 ]
-   LOCAL nPosAnt, nLines, cLine
-
-   IF !s_lUseRecCount
-      nRecords := 0
-      RETURN HB_SUCCESS
-   ENDIF
-
-   nPosAnt := FSeek( nHandle, 0, FS_RELATIVE )
-   nLines := 0
-
-   FSeek( nHandle, aWData[ 9 ], FS_SET ) // Inicia a contagem pulando o BOM
-   IF Len( s_aManualHeader ) == 0
-      IF s_lUseHeader
-         FREADLINE( nHandle, s_nReadSize, .T., aWData[ 4 ] )
-      ENDIF
-   ENDIF
-   
-   WHILE .T.
-      cLine := FREADLINE( nHandle, s_nReadSize, .T., aWData[ 4 ] )
-      IF cLine == '__FINAL__'
-         EXIT
-      ENDIF
-      nLines++
-   ENDDO
-   
-   FSeek( nHandle, nPosAnt, FS_SET )
-   nRecords := nLines
-   RETURN HB_SUCCESS
-
-STATIC FUNCTION FCSV_FCOUNT( nWA, nFields )
-   LOCAL aWData := USRRDD_AREADATA( nWA )
-   LOCAL aCols
-
-   IF s_lUseHeader .AND. Len( aWData[ 7 ] ) > 0
-      nFields := Len( aWData[ 7 ] )
-   ELSEIF !Empty( aWData[ 6 ] )
-      IF s_lUseSplit
-         aCols := SplitAspasRDD( aWData[ 6 ], s_cFieldDelim )
-      ELSE
-         aCols := hb_ATokens( aWData[ 6 ], s_cFieldDelim )
-      ENDIF
-      nFields := Len( aCols )
-   ELSE
-      nFields := 1
-   ENDIF
-   RETURN HB_SUCCESS
-
-STATIC FUNCTION FCSV_RDDINFO( nIndex, cargo ) 
-   Local xRet := NIL
-   HB_SYMBOL_UNUSED( cargo )
-
-   DO CASE
-      CASE nIndex == RDDI_TABLEEXT
-         xRet := ".csv"
-
-      CASE nIndex == RDDI_MEMOEXT
-         xRet := ""
-
-      CASE nIndex == RDDI_ORDBAGEXT
-         xRet := ""
-   ENDCASE
+CASE nIndex == RDDI_ORDBAGEXT
+   xRet := ""
+ENDCASE
 
 RETURN xRet
 
-STATIC FUNCTION FCSV_INFO( nWA, nItem, xArg )
-   LOCAL xRet := NIL
 
-   DO CASE
-      CASE nItem == DBI_ISDBF
-         xRet := .F.
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function FCSV_INFO()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION FCSV_INFO(nWA,nItem,xArg)
 
-      CASE nItem == DBI_CANPUTREC
-         xRet := .F.
+LOCAL xRet := NIL
 
-      OTHERWISE
-         xRet := UR_SUPER_INFO( nWA, nItem, xArg )
-   ENDCASE
+DO CASE
+CASE nItem == DBI_ISDBF
+   xRet := .F.
+
+CASE nItem == DBI_CANPUTREC
+   xRet := .F.
+
+OTHERWISE
+   xRet := UR_SUPER_INFO(nWA,nItem,xArg)
+ENDCASE
 
 RETURN xRet
 
-FUNCTION FCSVRDD_GETFUNCTABLE( pFuncCount, pFuncTable, pSuperTable, nRddID )
-   LOCAL cSuperRDD := NIL
-   LOCAL aMyFunc[ UR_METHODCOUNT ]
 
-   aMyFunc[ UR_INIT ]     := @FCSV_INIT()
-   aMyFunc[ UR_NEW ]      := @FCSV_NEW()
-   aMyFunc[ UR_CREATE ]   := @FCSV_CREATE()
-   aMyFunc[ UR_OPEN ]     := @FCSV_OPEN()
-   aMyFunc[ UR_CLOSE ]    := @FCSV_CLOSE()
-   aMyFunc[ UR_BOF  ]     := @FCSV_Bof()
-   aMyFunc[ UR_EOF  ]     := @FCSV_Eof()
-   aMyFunc[ UR_DELETED ]  := @FCSV_DELETED()
-   aMyFunc[ UR_SKIPRAW ]  := @FCSV_SKIPRAW()
-   aMyFunc[ UR_GOTO ]     := @FCSV_GOTO()
-   aMyFunc[ UR_GOTOID ]   := @FCSV_GOTOID()
-   aMyFunc[ UR_GOTOP ]    := @FCSV_GOTOP()
-   aMyFunc[ UR_GOBOTTOM ] := @FCSV_GOBOTTOM()
-   aMyFunc[ UR_RECID ]    := @FCSV_RECID()
-   aMyFunc[ UR_RECCOUNT ] := @FCSV_RECCOUNT()
-   aMyFunc[ UR_GETVALUE ] := @FCSV_GETVALUE()
-   aMyFunc[ UR_FIELDCOUNT ] := @FCSV_FCOUNT()
-   aMyFunc[ UR_RDDINFO ]  := @FCSV_RDDINFO()
-   aMyFunc[ UR_INFO ]     := @FCSV_INFO()
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Function FCSVRDD_GETFUNCTABLE()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+FUNCTION FCSVRDD_GETFUNCTABLE(pFuncCount,pFuncTable,pSuperTable,nRddID)
 
-   RETURN USRRDD_GETFUNCTABLE( pFuncCount, pFuncTable, pSuperTable, nRddID, ;
-      cSuperRDD, aMyFunc )
+LOCAL cSuperRDD := NIL
+LOCAL aMyFunc[UR_METHODCOUNT]
 
+aMyFunc[ UR_INIT ]       := @FCSV_INIT()
+aMyFunc[ UR_NEW ]        := @FCSV_NEW()
+aMyFunc[ UR_CREATE ]     := @FCSV_CREATE()
+aMyFunc[ UR_OPEN ]       := @FCSV_OPEN()
+aMyFunc[ UR_CLOSE ]      := @FCSV_CLOSE()
+aMyFunc[ UR_BOF ]        := @FCSV_Bof()
+aMyFunc[ UR_EOF ]        := @FCSV_Eof()
+aMyFunc[ UR_DELETED ]    := @FCSV_DELETED()
+aMyFunc[ UR_SKIPRAW ]    := @FCSV_SKIPRAW()
+aMyFunc[ UR_GOTO ]       := @FCSV_GOTO()
+aMyFunc[ UR_GOTOID ]     := @FCSV_GOTOID()
+aMyFunc[ UR_GOTOP ]      := @FCSV_GOTOP()
+aMyFunc[ UR_GOBOTTOM ]   := @FCSV_GOBOTTOM()
+aMyFunc[ UR_RECID ]      := @FCSV_RECID()
+aMyFunc[ UR_RECCOUNT ]   := @FCSV_RECCOUNT()
+aMyFunc[ UR_GETVALUE ]   := @FCSV_GETVALUE()
+aMyFunc[ UR_FIELDCOUNT ] := @FCSV_FCOUNT()
+aMyFunc[ UR_RDDINFO ]    := @FCSV_RDDINFO()
+aMyFunc[ UR_INFO ]       := @FCSV_INFO()
+
+RETURN USRRDD_GETFUNCTABLE(pFuncCount,pFuncTable,pSuperTable,nRddID,;
+ cSuperRDD,aMyFunc)
+
+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Init Procedure FCSVRDD_INIT()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
 INIT PROCEDURE FCSVRDD_INIT()
-   rddRegister( "FCSVRDD", RDT_FULL )
-   RETURN
-   
-   
- // +--------------------------------------------------------------------
+
+rddRegister("FCSVRDD",RDT_FULL)
+RETURN
+
+
+// +--------------------------------------------------------------------
 // +  Função: UniversalDateTime
 // +  Objetivo: Tratar datas complexas mantendo e corrigindo o horário
 // +  Retorna: Timestamp nativo (T) de alta precisão
 // +--------------------------------------------------------------------
-STATIC FUNCTION UniversalDateTime( xData )
 
-   LOCAL cStr, cDataLimpa, aParts, i, dData
-   LOCAL cTime := "00:00:00"
-   LOCAL nHour := 0, nMin := 0, nSec := 0
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+*+    Static Function UniversalDateTime()
+*+
+*+
+*+
+*+--------------------------------------------------------------------
+*+
+*+
+*+
+STATIC FUNCTION UniversalDateTime(xData)
 
-   // 1. Já é Data ou Timestamp? Trata a conversão direta
-   IF ValType( xData ) == "T"
-      RETURN xData
-   ELSEIF ValType( xData ) == "D"
-      RETURN hb_DateTime( Year(xData), Month(xData), Day(xData) )
+
+LOCAL cStr,cDataLimpa,aParts,i,dData
+LOCAL cTime := "00:00:00"
+LOCAL nHour := 0,nMin := 0,nSec := 0
+
+// 1. Já é Data ou Timestamp? Trata a conversão direta
+IF ValType(xData) == "T"
+   RETURN xData
+ELSEIF ValType(xData) == "D"
+   RETURN hb_DateTime(Year(xData),Month(xData),Day(xData))
+ENDIF
+
+// 2. Barreira para nulos ou variáveis não suportadas
+IF ValType(xData) <> "C" .OR. Empty(xData)
+   RETURN hb_DateTime(0,0,0)
+ENDIF
+
+// 3. Limpa espaços e conserta erros como ";" ou tags ISO "T"
+cStr := AllTrim(xData)
+cStr := StrTran(cStr,";",":")
+cStr := StrTran(cStr,"T"," ")
+
+aParts     := hb_ATokens(cStr," ")
+cDataLimpa := ""
+
+// 4. Caçador de Horários
+FOR i := 1 TO Len(aParts)
+   IF ":" $ aParts[i] .AND. Val(StrTran(aParts[i],":","")) >= 0
+      cTime := aParts[i]  // Isola apenas a hora encontrada
+   ELSE
+      cDataLimpa += aParts[i]+" "   // Reconstrói string base só da data
    ENDIF
+NEXT
 
-   // 2. Barreira para nulos ou variáveis não suportadas
-   IF ValType( xData ) <> "C" .OR. Empty( xData )
-      RETURN hb_DateTime( 0, 0, 0 )
-   ENDIF
+cDataLimpa := AllTrim(cDataLimpa)
 
-   // 3. Limpa espaços e conserta erros como ";" ou tags ISO "T"
-   cStr := AllTrim( xData )
-   cStr := StrTran( cStr, ";", ":" )
-   cStr := StrTran( cStr, "T", " " )
+// 5. Utiliza o motor otimizado para extrair o calendário válido
+dData := StrDaterdd(cDataLimpa)
 
-   aParts := hb_ATokens( cStr, " " )
-   cDataLimpa := ""
+// Fallback se a rotina retornar vazio, checa direto via Harbour CToD
+IF Empty(dData) .AND. !Empty(CToD(cDataLimpa))
+   dData := CToD(cDataLimpa)
+ENDIF
 
-   // 4. Caçador de Horários
-   FOR i := 1 TO Len( aParts )
-      IF ":" $ aParts[i] .AND. Val( StrTran( aParts[i], ":", "" ) ) >= 0
-         cTime := aParts[i] // Isola apenas a hora encontrada
-      ELSE
-         cDataLimpa += aParts[i] + " " // Reconstrói string base só da data
-      ENDIF
-   NEXT
+IF Empty(dData)
+   RETURN hb_DateTime(0,0,0)
+ENDIF
 
-   cDataLimpa := AllTrim( cDataLimpa )
-   
-   // 5. Utiliza o motor otimizado para extrair o calendário válido
-   dData := StrDaterdd( cDataLimpa )
+// 6. Separa e converte as partes do Horário
+aParts := hb_ATokens(cTime,":")
+IF Len(aParts) >= 1 
+   nHour := Val(aParts[1])
+ENDIF
+IF Len(aParts) >= 2 
+   nMin := Val(aParts[2])
+ENDIF
+IF Len(aParts) >= 3 
+   nSec := Val(aParts[3])
+ENDIF
 
-   // Fallback se a rotina retornar vazio, checa direto via Harbour CToD
-   IF Empty( dData ) .AND. !Empty( CToD( cDataLimpa ) )
-      dData := CToD( cDataLimpa )
-   ENDIF
+// 7. Retorna o Objeto Timestamp Oficial
+RETURN hb_DateTime(Year(dData),Month(dData),Day(dData),nHour,nMin,nSec)
 
-   IF Empty( dData )
-      RETURN hb_DateTime( 0, 0, 0 )
-   ENDIF
 
-   // 6. Separa e converte as partes do Horário
-   aParts := hb_ATokens( cTime, ":" )
-   IF Len( aParts ) >= 1; nHour := Val( aParts[1] ); ENDIF
-   IF Len( aParts ) >= 2; nMin  := Val( aParts[2] ); ENDIF
-   IF Len( aParts ) >= 3; nSec  := Val( aParts[3] ); ENDIF
-
-   // 7. Retorna o Objeto Timestamp Oficial
-   RETURN hb_DateTime( Year( dData ), Month( dData ), Day( dData ), nHour, nMin, nSec ) 
-   
+*+ EOF: FCSVRDD.prg
+*+

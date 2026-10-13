@@ -1,0 +1,80 @@
+# 📘 Documentacao Tecnica do Projeto
+> Gerado em: 13/10/2026 18:37:32
+
+## 🏗️ Estrutura de Modulos (PRGs)
+
+### 📄 Arquivo: `c:\temp\uso\fcsvclasse.prg`
+- Method New()
+- Method GetLine()
+- Method Open()
+- Method Close()
+- Method ReadLineCustom()
+- Method DetectLineDelimiter()
+- Method DetectDelimiter()
+- Method GoTop()
+- Method GoBottom()
+- Method Skip()
+- Method GoTo()
+- Method LastRec()
+- Method FieldName()
+- Method FieldPos()
+- Method FieldGet()
+- Method GetRow()
+- Method SplitCSV()
+- Method SplitAspas()
+- Method ParseFieldDefinition()
+- Method StrLogic()
+- Method StrDate()
+- Static Function UniversalDateTime()
+
+### 📄 Arquivo: `c:\temp\uso\FCSVRDD.prg`
+- Function FCSV_TAMANHOLEITURA()
+- Function FCSV_USARSPLIT()
+- Function FCSV_SETDELIM()
+- Function FCSV_USARHEADER()
+- Function FCSV_USARRECCOUNT()
+- Function FCSV_USARTIPAGEM()
+- Function FCSV_RETORNATIPADO()
+- Function FCSV_SETCABECALHO()
+- Function FCSV_GETLINE()
+- Function FCSV_GETROW()
+- Function FCSV_GETSTRUCTORIGINAL()
+- Function SplitAspasRDD()
+- Static Function ParseFieldDefinition()
+- Static Function StrLogicrdd()
+- Static Function StrDateRdd()
+- Static Function FCSV_INIT()
+- Static Function FCSV_NEW()
+- Static Function FCSV_CREATE()
+- Static Function FCSV_OPEN()
+- Static Function FCSV_CLOSE()
+- Static Function FCSV_READNEXT()
+- Static Function FCSV_GETVALUE()
+- Static Function FCSV_GOTOP()
+- Static Function FCSV_GOBOTTOM()
+- Static Function FCSV_SKIPRAW()
+- Static Function FCSV_GOTO()
+- Static Function FCSV_GOTOID()
+- Static Function FCSV_Bof()
+- Static Function FCSV_EOF()
+- Static Function FCSV_DELETED()
+- Static Function FCSV_RECID()
+- Static Function FCSV_RECCOUNT()
+- Static Function FCSV_FCOUNT()
+- Static Function FCSV_RDDINFO()
+- Static Function FCSV_INFO()
+- Function FCSVRDD_GETFUNCTABLE()
+- Init Procedure FCSVRDD_INIT()
+- Static Function UniversalDateTime()
+
+### 📄 Arquivo: `c:\temp\uso\f_freadl.prg`
+- Function FREADLINE()
+- Function FDELIM()
+- Function SplitCommaAspas()
+
+## 📊 Dicionario de Dados e Acessos
+
+## 🕸️ Diagrama de Relacionamento (Mermaid)
+```mermaid
+graph TD
+```
